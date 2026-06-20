@@ -1,0 +1,23 @@
+import type { Title } from '../types'
+
+// Sample deck so the swipe loop works end-to-end with zero setup. Posters are
+// rendered as gradients (no broken images, no API key); once the TMDB proxy is
+// wired (see src/tmdb.ts) these are replaced by real /discover results.
+export const SAMPLE_TITLES: Title[] = [
+  { id: 1, mediaType: 'movie', title: 'Dune: Part Two', year: 2024, genres: ['Sci-Fi', 'Adventure'], rating: 8.2, providers: ['Max'], gradient: ['#C2703A', '#5A2E12'], overview: 'Paul Atreides unites with the Fremen to wage war against House Harkonnen and claim his destiny on Arrakis.' },
+  { id: 2, mediaType: 'movie', title: 'Everything Everywhere All at Once', year: 2022, genres: ['Sci-Fi', 'Comedy'], rating: 7.8, providers: ['Prime Video'], gradient: ['#E84393', '#2D1B4E'], overview: 'A laundromat owner is swept into a multiverse adventure where she alone can save existence.' },
+  { id: 3, mediaType: 'tv', title: 'Severance', year: 2022, genres: ['Drama', 'Thriller'], rating: 8.7, providers: ['Apple TV+'], gradient: ['#2C7A7B', '#0B1B2B'], overview: 'Employees surgically divide their work and personal memories — until the line starts to break.' },
+  { id: 4, mediaType: 'movie', title: 'Oppenheimer', year: 2023, genres: ['Drama', 'History'], rating: 8.1, providers: ['Peacock'], gradient: ['#B7791F', '#1A1A1A'], overview: 'The story of J. Robert Oppenheimer and the race to build the atomic bomb.' },
+  { id: 5, mediaType: 'tv', title: 'The Bear', year: 2022, genres: ['Drama', 'Comedy'], rating: 8.5, providers: ['Hulu'], gradient: ['#C53030', '#1C1917'], overview: 'A fine-dining chef returns home to run his late brother’s chaotic Chicago sandwich shop.' },
+  { id: 6, mediaType: 'movie', title: 'Spider-Man: Across the Spider-Verse', year: 2023, genres: ['Animation', 'Action'], rating: 8.4, providers: ['Netflix'], gradient: ['#6B46C1', '#E53E3E'], overview: 'Miles Morales rockets across the multiverse and clashes with a society of Spider-People.' },
+  { id: 7, mediaType: 'movie', title: 'Past Lives', year: 2023, genres: ['Romance', 'Drama'], rating: 7.9, providers: ['Paramount+'], gradient: ['#3182CE', '#15294B'], overview: 'Two childhood friends reunite decades later for one fateful week in New York.' },
+  { id: 8, mediaType: 'tv', title: 'Shogun', year: 2024, genres: ['Drama', 'History'], rating: 8.7, providers: ['Hulu'], gradient: ['#9B2C2C', '#1A202C'], overview: 'An English navigator is caught in the brutal power struggles of feudal Japan.' },
+  { id: 9, mediaType: 'movie', title: 'The Substance', year: 2024, genres: ['Horror', 'Sci-Fi'], rating: 7.3, providers: ['Mubi'], gradient: ['#D69E2E', '#742A2A'], overview: 'A fading star takes a black-market drug that creates a younger version of herself.' },
+  { id: 10, mediaType: 'tv', title: 'Arcane', year: 2021, genres: ['Animation', 'Action'], rating: 9.0, providers: ['Netflix'], gradient: ['#3B82C4', '#7C3AED'], overview: 'Two sisters end up on opposite sides of a war between the city of Piltover and the undercity.' },
+  { id: 11, mediaType: 'movie', title: 'Poor Things', year: 2023, genres: ['Comedy', 'Romance'], rating: 7.8, providers: ['Hulu'], gradient: ['#319795', '#553C9A'], overview: 'A young woman brought back to life by a scientist sets off on a wild journey of self-discovery.' },
+  { id: 12, mediaType: 'movie', title: 'Sinners', year: 2025, genres: ['Horror', 'Thriller'], rating: 7.6, providers: ['Max'], gradient: ['#742A2A', '#0B0B12'], overview: 'Twin brothers return to their hometown to start over — and confront an evil waiting for them.' },
+  { id: 13, mediaType: 'tv', title: 'Fallout', year: 2024, genres: ['Sci-Fi', 'Adventure'], rating: 8.3, providers: ['Prime Video'], gradient: ['#2F855A', '#1A202C'], overview: 'A vault dweller ventures into the irradiated wasteland of post-apocalyptic Los Angeles.' },
+  { id: 14, mediaType: 'movie', title: 'The Holdovers', year: 2023, genres: ['Comedy', 'Drama'], rating: 7.9, providers: ['Peacock'], gradient: ['#B7791F', '#22543D'], overview: 'A grumpy teacher is stuck babysitting students with nowhere to go over Christmas break.' },
+  { id: 15, mediaType: 'tv', title: 'The Last of Us', year: 2023, genres: ['Drama', 'Horror'], rating: 8.6, providers: ['Max'], gradient: ['#4A5568', '#1A202C'], overview: 'A smuggler escorts a teenage girl across a fungus-ravaged America that may hold a cure.' },
+  { id: 16, mediaType: 'movie', title: 'Anatomy of a Fall', year: 2023, genres: ['Drama', 'Thriller'], rating: 7.7, providers: ['Hulu'], gradient: ['#2B6CB0', '#1A1A2E'], overview: 'A woman stands trial for the mysterious death of her husband, witnessed only by their blind son.' },
+]
