@@ -15,6 +15,12 @@ type Status = 'loading' | 'ready' | 'error'
 
 const keyOf = (t: Title) => `${t.mediaType}-${t.id}`
 
+// Genre chips shown on the deck. The proxy maps these names to TMDB ids; the
+// sample deck matches them by name.
+const GENRES = ['Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Documentary', 'Drama', 'Fantasy', 'Horror', 'Mystery', 'Romance', 'Sci-Fi', 'Thriller']
+const NOW = new Date().getFullYear()
+const YEARS = Array.from({ length: NOW - 2009 }, (_, i) => NOW - i).concat([2005, 2000, 1995, 1990, 1980])
+
 export default function App() {
   const initial = useMemo(loadState, [])
   const [watchlist, setWatchlist] = useState<Title[]>(initial.watchlist)
@@ -25,17 +31,21 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('deck')
   const [filter, setFilter] = useState<Filter>('all')
   const [genre, setGenre] = useState<string | null>(null)
+  const [year, setYear] = useState<number | null>(null)
   const [detail, setDetail] = useState<Title | null>(null)
   const [ratingFor, setRatingFor] = useState<Title | null>(null)
 
+  // Fetch the deck for the current filters. Genre/year refetch from the proxy
+  // (live recommendations) or filter the sample deck when no proxy is set.
   const load = useCallback(() => {
     setStatus('loading')
     const ctrl = new AbortController()
-    fetchDeck({ mediaTypes: ['movie', 'tv'] }, ctrl.signal)
+    const mediaTypes: MediaType[] = filter === 'all' ? ['movie', 'tv'] : [filter]
+    fetchDeck({ mediaTypes, genre: genre ?? undefined, year: year ?? undefined }, ctrl.signal)
       .then(d => { setPool(d); setStatus('ready') })
       .catch((e: unknown) => { if ((e as Error)?.name !== 'AbortError') setStatus('error') })
     return () => ctrl.abort()
-  }, [])
+  }, [filter, genre, year])
   useEffect(() => load(), [load])
 
   const hydrated = useRef(false)
@@ -52,26 +62,7 @@ export default function App() {
     return s
   }, [seen, watchlist, watched])
 
-  // Genres available within the current media filter (for the genre chip row).
-  const genres = useMemo(() => {
-    const set = new Set<string>()
-    for (const t of pool) if (filter === 'all' || t.mediaType === filter) t.genres.forEach(g => set.add(g))
-    return [...set].sort()
-  }, [pool, filter])
-
-  // Clamp a stale genre when the media filter changes it out of range.
-  useEffect(() => {
-    if (genre && !genres.includes(genre)) setGenre(null)
-  }, [genre, genres])
-
-  const deck = useMemo(
-    () => pool.filter(t =>
-      !excluded.has(keyOf(t)) &&
-      (filter === 'all' || t.mediaType === filter) &&
-      (genre === null || t.genres.includes(genre)),
-    ),
-    [pool, excluded, filter, genre],
-  )
+  const deck = useMemo(() => pool.filter(t => !excluded.has(keyOf(t))), [pool, excluded])
 
   const savedKeys = useMemo(() => new Set(watchlist.map(keyOf)), [watchlist])
   const isSaved = (t: Title) => savedKeys.has(keyOf(t))
@@ -90,7 +81,7 @@ export default function App() {
     markSeen(k)
     setWatchlist(w => w.filter(x => keyOf(x) !== k))
     setWatched(list => (list.some(x => keyOf(x) === k) ? list : [...list, { ...t, stars: 0 }]))
-    setRatingFor(t) // prompt for a quick rating
+    setRatingFor(t)
   }
 
   const rate = (t: Title, stars: number) => {
@@ -105,6 +96,8 @@ export default function App() {
     markSeen(k)
   }
 
+  const filtersActive = filter !== 'all' || genre !== null || year !== null
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', maxWidth: 640, margin: '0 auto' }}>
       {/* Top bar */}
@@ -112,7 +105,7 @@ export default function App() {
         <div style={{ fontWeight: 900, fontSize: 22, letterSpacing: '0.14em' }}>
           R<span style={{ color: '#22c55e' }}>E</span>X
         </div>
-        {screen === 'deck' && status === 'ready' && (
+        {screen === 'deck' && (
           <div role="group" aria-label="Filter by type" style={{ display: 'flex', gap: 6, background: 'rgba(255,255,255,0.06)', padding: 4, borderRadius: 999 }}>
             {(['all', 'movie', 'tv'] as Filter[]).map(f => (
               <button key={f} onClick={() => setFilter(f)} aria-pressed={filter === f}
@@ -125,11 +118,17 @@ export default function App() {
         )}
       </header>
 
-      {/* Genre chip row (deck only) */}
-      {screen === 'deck' && status === 'ready' && genres.length > 1 && (
-        <div role="group" aria-label="Filter by genre" style={{ display: 'flex', gap: 7, overflowX: 'auto', padding: '4px 16px 8px', WebkitOverflowScrolling: 'touch' }}>
-          <GenreChip active={genre === null} onClick={() => setGenre(null)}>All genres</GenreChip>
-          {genres.map(g => <GenreChip key={g} active={genre === g} onClick={() => setGenre(g)}>{g}</GenreChip>)}
+      {/* Genre + year filters (deck only) */}
+      {screen === 'deck' && (
+        <div role="group" aria-label="Filter by genre and year" style={{ display: 'flex', gap: 7, overflowX: 'auto', padding: '4px 16px 8px', WebkitOverflowScrolling: 'touch' }}>
+          <select aria-label="Year" value={year ?? ''} onChange={e => setYear(e.target.value ? Number(e.target.value) : null)}
+            style={{ flexShrink: 0, fontSize: 12.5, fontWeight: 700, padding: '6px 10px', borderRadius: 999, cursor: 'pointer',
+              background: year ? '#fff' : 'rgba(255,255,255,0.08)', color: year ? '#0B0B12' : '#fff', border: '1px solid rgba(255,255,255,0.16)' }}>
+            <option value="">Any year</option>
+            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <Chip active={genre === null} onClick={() => setGenre(null)}>All genres</Chip>
+          {GENRES.map(g => <Chip key={g} active={genre === g} onClick={() => setGenre(g)}>{g}</Chip>)}
         </div>
       )}
 
@@ -143,9 +142,9 @@ export default function App() {
           ) : deck.length > 0 ? (
             <SwipeDeck deck={deck} onLike={like} onPass={pass} onWatched={markWatched} onOpenDetail={setDetail} />
           ) : (
-            <Centered glyph="🍿" title="You've seen everything"
-              sub={`${filter !== 'all' || genre ? 'Try a different filter up top, or ' : ''}reset to swipe again.`}
-              action={{ label: 'Start over', onClick: () => setSeen([]) }} />
+            <Centered glyph="🍿" title="That's the deck for now"
+              sub={`${filtersActive ? 'Try a different genre/year up top, or ' : ''}get a fresh batch.`}
+              action={{ label: 'Fresh batch', onClick: () => { setSeen([]); load() } }} />
           )
         ) : screen === 'watchlist' ? (
           <Watchlist items={watchlist} onOpen={setDetail} onRemove={toggleSave} />
@@ -191,7 +190,7 @@ function Centered({ glyph, title, sub, action }: {
   )
 }
 
-function GenreChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button onClick={onClick} aria-pressed={active}
       style={{ flexShrink: 0, fontSize: 12.5, fontWeight: 700, padding: '6px 13px', borderRadius: 999, cursor: 'pointer',
