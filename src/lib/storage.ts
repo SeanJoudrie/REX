@@ -1,4 +1,4 @@
-import type { Title } from '../types'
+import type { Title, WatchedItem } from '../types'
 
 // Guest-mode persistence: everything lives on-device in localStorage so users
 // can swipe and build a watchlist with no account (per the UX spec). When
@@ -10,13 +10,15 @@ interface Persisted {
   /** Full title objects for right-swipes, denormalized so the watchlist renders
    *  with zero API calls. */
   watchlist: Title[]
+  /** Titles the user marked watched (swipe up), with a 1–5 star rating. */
+  watched: WatchedItem[]
   /** Composite "mediaType-id" keys of every title already swiped or saved, to
    *  skip in the deck. Keyed by (mediaType, id) because TMDB reuses numeric ids
    *  across movies and TV. */
   seen: string[]
 }
 
-const EMPTY: Persisted = { watchlist: [], seen: [] }
+const EMPTY: Persisted = { watchlist: [], watched: [], seen: [] }
 
 export function loadState(): Persisted {
   try {
@@ -29,7 +31,7 @@ export function loadState(): Persisted {
     if (v1raw) {
       const v1 = JSON.parse(v1raw) as { watchlist?: Title[] }
       const watchlist = v1.watchlist ?? []
-      return { watchlist, seen: watchlist.map(t => `${t.mediaType}-${t.id}`) }
+      return { ...EMPTY, watchlist, seen: watchlist.map(t => `${t.mediaType}-${t.id}`) }
     }
     return { ...EMPTY }
   } catch {

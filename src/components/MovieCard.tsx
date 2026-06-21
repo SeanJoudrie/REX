@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { Title } from '../types'
 
@@ -13,18 +13,25 @@ const badge: CSSProperties = {
   padding: '4px 9px', borderRadius: 8,
   background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)', color: '#fff',
 }
+const theaterBadge: CSSProperties = {
+  ...badge,
+  background: 'rgba(201,162,39,0.22)', border: '1px solid rgba(201,162,39,0.6)', color: '#f6e27a',
+}
 
-/** Poster-first card: thin, decision-relevant info only (per the UX teardown).
- *  Real synopsis lives in the detail view. */
+/** Poster-first card: thin, decision-relevant info only. The poster sits over the
+ *  gradient, so if the image fails to load the gradient shows through. */
 function MovieCard({ t, dimmed }: { t: Title; dimmed?: boolean }) {
+  const [imgOk, setImgOk] = useState(true)
+  const showImg = !!t.poster && imgOk
+
   return (
     <div className="no-select" style={{
       position: 'absolute', inset: 0, borderRadius: 24, overflow: 'hidden',
-      background: t.poster ? '#111' : `linear-gradient(155deg, ${t.gradient[0]}, ${t.gradient[1]})`,
+      background: `linear-gradient(155deg, ${t.gradient[0]}, ${t.gradient[1]})`,
       boxShadow: '0 24px 60px -22px rgba(0,0,0,0.75)', border: '1px solid rgba(255,255,255,0.08)',
     }}>
-      {t.poster && (
-        <img src={t.poster} alt="" draggable={false}
+      {showImg && (
+        <img src={t.poster} alt="" draggable={false} onError={() => setImgOk(false)}
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
       )}
       <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(120% 75% at 50% 0%, rgba(255,255,255,0.10), transparent 55%)' }} />
@@ -41,6 +48,7 @@ function MovieCard({ t, dimmed }: { t: Title; dimmed?: boolean }) {
         <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.04, letterSpacing: '-0.02em' }}>{t.title}</div>
         <div style={{ marginTop: 6, fontSize: 13, opacity: 0.82 }}>{t.year} · {t.genres.join(' · ')}</div>
         <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {t.inTheaters && <span style={theaterBadge}>🎬 In Theaters</span>}
           {t.providers.map(p => <span key={p} style={badge}>{p}</span>)}
         </div>
       </div>
