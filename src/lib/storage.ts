@@ -1,4 +1,5 @@
 import type { Title, WatchedItem } from '../types'
+import type { TasteVec } from './taste'
 
 // Guest-mode persistence: everything lives on-device in localStorage so users
 // can swipe and build a watchlist with no account (per the UX spec). When
@@ -19,9 +20,13 @@ interface Persisted {
   /** Taste prefs that bias the deck: tags the user wants more / less of. */
   likes: string[]
   dislikes: string[]
+  /** Learned per-genre weights, updated by every swipe/rating. */
+  taste: TasteVec
+  /** First-run tutorial shown? */
+  onboarded: boolean
 }
 
-const EMPTY: Persisted = { watchlist: [], watched: [], seen: [], likes: [], dislikes: [] }
+const EMPTY: Persisted = { watchlist: [], watched: [], seen: [], likes: [], dislikes: [], taste: {}, onboarded: false }
 
 export function loadState(): Persisted {
   try {
