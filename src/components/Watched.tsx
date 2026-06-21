@@ -64,7 +64,7 @@ export default function Watched({ items, onRate, onRemove, onOpen, likes, dislik
   const shown = useMemo(() => [...items].sort((a, b) => (b.stars || 0) - (a.stars || 0)), [items])
 
   return (
-    <div style={{ padding: '4px 16px 24px', maxWidth: 520, margin: '0 auto' }}>
+    <div style={{ padding: '4px 16px 24px', maxWidth: 520, width: '100%', minWidth: 0, margin: '0 auto' }}>
       <TastePanel likes={likes} dislikes={dislikes} onTaste={onTaste} onReset={onResetTaste} />
 
       <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', margin: '4px 2px 4px' }}>
@@ -81,26 +81,22 @@ export default function Watched({ items, onRate, onRemove, onOpen, likes, dislik
           <div style={{ marginTop: 6, fontSize: 13, opacity: 0.7 }}>Swipe a card up to mark it watched, then rate it.</div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {shown.map(t => (
-            <div key={`${t.mediaType}-${t.id}`} style={{ position: 'relative' }}>
+            <div key={`${t.mediaType}-${t.id}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto', alignItems: 'center', gap: 8, background: '#15151F', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: 8 }}>
               <button onClick={() => onOpen(t)} aria-label={`Open ${t.title}`}
-                style={{ width: '100%', textAlign: 'left', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.08)', background: '#15151F', padding: 0 }}>
-                <div style={{ height: 150, position: 'relative', background: `linear-gradient(155deg, ${t.gradient[0]}, ${t.gradient[1]})` }}>
+                style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+                <div style={{ width: 38, height: 54, flexShrink: 0, position: 'relative', borderRadius: 6, overflow: 'hidden', background: `linear-gradient(155deg, ${t.gradient[0]}, ${t.gradient[1]})` }}>
                   <Poster src={t.poster} />
                 </div>
-                <div style={{ padding: '10px 11px 6px' }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
-                  <div style={{ marginTop: 3, fontSize: 11, opacity: 0.6 }}>{t.year}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#fff' }}>{t.title}</div>
+                  <div style={{ marginTop: 2, fontSize: 11, opacity: 0.55 }}>{t.year} · {t.mediaType === 'tv' ? 'TV' : 'Film'}</div>
                 </div>
               </button>
-              <div style={{ padding: '4px 11px 12px', display: 'flex', justifyContent: 'center' }}>
-                <StarRating value={t.stars} onChange={n => onRate(t, n)} size={20} />
-              </div>
+              <StarRating value={t.stars} onChange={n => onRate(t, n)} size={15} />
               <button onClick={() => { if (navigator.vibrate) navigator.vibrate(8); onRemove(t) }} aria-label={`Remove ${t.title} from watched`}
-                style={{ position: 'absolute', top: 8, left: 8, width: 28, height: 28, borderRadius: 999, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
-                  background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.25)', backdropFilter: 'blur(4px)', touchAction: 'manipulation' }}>
+                style={{ width: 26, height: 26, borderRadius: 999, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.55)', background: 'transparent', border: 'none', touchAction: 'manipulation' }}>
                 <Icon name="x" size={15} />
               </button>
             </div>

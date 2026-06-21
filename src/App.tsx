@@ -207,7 +207,7 @@ export default function App() {
       )}
 
       {/* Main */}
-      <main style={{ flex: 1, minHeight: 0, overflowY: screen === 'deck' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', justifyContent: screen === 'deck' ? 'center' : 'flex-start', padding: screen === 'deck' ? '6px 16px' : 0 }}>
+      <main style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: screen === 'deck' ? 'hidden' : 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: screen === 'deck' ? 'center' : 'flex-start', padding: screen === 'deck' ? '6px 16px' : 0 }}>
         {screen === 'deck' ? (
           status === 'loading' ? (
             <Centered icon={<Icon name="film" size={40} />} title="Loading titles…" />

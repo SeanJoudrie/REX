@@ -42,7 +42,7 @@ export default function Watchlist({ items, onOpen, onRemove }: {
   }
 
   return (
-    <div style={{ padding: '4px 16px 24px', maxWidth: 520, margin: '0 auto' }}>
+    <div style={{ padding: '4px 16px 24px', maxWidth: 520, width: '100%', minWidth: 0, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '8px 2px 12px' }}>
         <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em' }}>
           Watchlist <span style={{ opacity: 0.5, fontSize: 16 }}>{items.length}</span>
@@ -81,9 +81,9 @@ export default function Watchlist({ items, onOpen, onRemove }: {
       {view === 'list' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {shown.map(t => (
-            <div key={`${t.mediaType}-${t.id}`} style={{ display: 'flex', alignItems: 'center', gap: 11, background: '#15151F', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: 8 }}>
+            <div key={`${t.mediaType}-${t.id}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', alignItems: 'center', gap: 11, background: '#15151F', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: 8 }}>
               <button onClick={() => onOpen(t)} aria-label={`Open ${t.title}`}
-                style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 11, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+                style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 11, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
                 <div style={{ width: 42, height: 60, flexShrink: 0, position: 'relative', borderRadius: 7, overflow: 'hidden', background: `linear-gradient(155deg, ${t.gradient[0]}, ${t.gradient[1]})` }}>
                   <Poster src={t.poster} />
                 </div>
