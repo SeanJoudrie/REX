@@ -20,8 +20,23 @@ export interface DeckQuery {
   genre?: string
   /** Release / first-air year. */
   year?: number
+  /** Sort/discovery mode: popular | top | box_office | new | hidden. */
+  sort?: string
+  /** Actor name — proxy resolves it to a person and filters by cast. */
+  actor?: string
   region?: string
   page?: number
+}
+
+// Local sort for the sample deck (no revenue/cast data, so box_office≈rating).
+function sortSample(list: Title[], sort?: string): Title[] {
+  switch (sort) {
+    case 'top':
+    case 'hidden':
+    case 'box_office': return [...list].sort((a, b) => b.rating - a.rating)
+    case 'new': return [...list].sort((a, b) => b.year - a.year)
+    default: return list
+  }
 }
 
 const stringArray = (v: unknown): string[] =>
@@ -62,13 +77,15 @@ function toTitle(raw: unknown): Title | null {
 export async function fetchDeck(query: DeckQuery, signal?: AbortSignal): Promise<Title[]> {
   if (!PROXY) {
     // No proxy configured yet — play with the sample deck, honoring the filters.
+    // Actor search needs cast data the sample doesn't have, so it's a no-op here.
     const types = new Set(query.mediaTypes)
     const g = query.genre?.toLowerCase()
-    return SAMPLE_TITLES.filter(t =>
+    const filtered = SAMPLE_TITLES.filter(t =>
       types.has(t.mediaType) &&
       (!g || t.genres.some(x => x.toLowerCase() === g)) &&
       (!query.year || t.year === query.year),
     )
+    return sortSample(filtered, query.sort)
   }
 
   // Live path. Bound the request with a timeout and honor a caller abort

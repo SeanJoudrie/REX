@@ -1,0 +1,14 @@
+{
+  "name": "REX — Swipe to Watch",
+  "short_name": "REX",
+  "description": "Swipe to discover movies and TV to watch.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#0B0B12",
+  "theme_color": "#0B0B12",
+  "icons": [
+    { "src": "icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
