@@ -20,10 +20,15 @@ export interface DeckQuery {
   genre?: string
   /** Release / first-air year. */
   year?: number
-  /** Sort/discovery mode: popular | top | box_office | new | hidden. */
+  /** Sort/discovery mode: popular | top | box_office | new | hidden | streaming_new. */
   sort?: string
   /** Actor name — proxy resolves it to a person and filters by cast. */
   actor?: string
+  /** Streaming service name to filter by (e.g. "Netflix"). */
+  service?: string
+  /** Taste bias: genres to lean into / avoid. */
+  withGenres?: string[]
+  withoutGenres?: string[]
   region?: string
   page?: number
 }
@@ -80,11 +85,18 @@ export async function fetchDeck(query: DeckQuery, signal?: AbortSignal): Promise
     // Actor search needs cast data the sample doesn't have, so it's a no-op here.
     const types = new Set(query.mediaTypes)
     const g = query.genre?.toLowerCase()
-    const filtered = SAMPLE_TITLES.filter(t =>
-      types.has(t.mediaType) &&
-      (!g || t.genres.some(x => x.toLowerCase() === g)) &&
-      (!query.year || t.year === query.year),
-    )
+    const svc = query.service?.toLowerCase()
+    const likes = (query.withGenres ?? []).map(x => x.toLowerCase())
+    const dislikes = (query.withoutGenres ?? []).map(x => x.toLowerCase())
+    const filtered = SAMPLE_TITLES.filter(t => {
+      const genresLc = t.genres.map(x => x.toLowerCase())
+      return types.has(t.mediaType) &&
+        (!g || genresLc.includes(g)) &&
+        (!query.year || t.year === query.year) &&
+        (!svc || t.providers.some(p => p.toLowerCase() === svc)) &&
+        (!likes.length || genresLc.some(x => likes.includes(x))) &&
+        !genresLc.some(x => dislikes.includes(x))
+    })
     return sortSample(filtered, query.sort)
   }
 

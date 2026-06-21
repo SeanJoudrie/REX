@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { Title } from '../types'
 import MovieCard from './MovieCard'
+import Icon from './Icon'
 
 const THRESHOLD = 90        // px of travel that commits a swipe
 const FLICK_VELOCITY = 0.5  // px/ms; a fast flick commits below THRESHOLD
@@ -23,15 +24,15 @@ function Stamp({ label, color, pos, o }: { label: string; color: string; pos: CS
   )
 }
 
-function ActionButton({ onClick, label, glyph, color }: { onClick: () => void; label: string; glyph: string; color: string }) {
+function ActionButton({ onClick, label, icon, color }: { onClick: () => void; label: string; icon: ReactNode; color: string }) {
   return (
     <button onClick={onClick} aria-label={label}
       style={{
-        width: 54, height: 54, borderRadius: 999, fontSize: 22, cursor: 'pointer',
+        width: 54, height: 54, borderRadius: 999, cursor: 'pointer',
         background: 'rgba(255,255,255,0.06)', border: `1.5px solid ${color}`, color,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         touchAction: 'manipulation',
-      }}>{glyph}</button>
+      }}>{icon}</button>
   )
 }
 
@@ -194,10 +195,10 @@ export default function SwipeDeck({
 
       {/* Thumb arc — swipe is primary; up arrow = watched */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <ActionButton onClick={() => commit('pass')} label="Pass" glyph="✕" color="#ef4444" />
-        <ActionButton onClick={() => commit('watched')} label="Mark watched" glyph="👁" color="#38bdf8" />
-        <ActionButton onClick={() => onOpenDetail(top)} label="Details" glyph="ℹ" color="#9ca3af" />
-        <ActionButton onClick={() => commit('like')} label="Add to watchlist" glyph="✓" color="#22c55e" />
+        <ActionButton onClick={() => commit('pass')} label="Pass" icon={<Icon name="x" size={22} />} color="#ef4444" />
+        <ActionButton onClick={() => commit('watched')} label="Mark watched" icon={<Icon name="eye" size={22} />} color="#38bdf8" />
+        <ActionButton onClick={() => onOpenDetail(top)} label="Details" icon={<Icon name="info" size={22} />} color="#9ca3af" />
+        <ActionButton onClick={() => commit('like')} label="Add to watchlist" icon={<Icon name="check" size={22} />} color="#22c55e" />
       </div>
     </div>
   )

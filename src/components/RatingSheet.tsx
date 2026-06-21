@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { Title } from '../types'
 import StarRating from './StarRating'
+import Icon from './Icon'
 
 /** Shown right after a swipe-up. Rating is optional — closing leaves the title
  *  in Watched, unrated. ★5 = more like this, ★1 = less. */
@@ -24,7 +25,9 @@ export default function RatingSheet({ t, onRate, onClose }: {
       style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={`Rate ${t.title}`}
         style={{ width: '100%', maxWidth: 360, borderRadius: 22, background: '#15151F', border: '1px solid rgba(255,255,255,0.1)', padding: '22px 22px 18px', textAlign: 'center' }}>
-        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.55 }}>Watched ✓</div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.55, color: '#38bdf8' }}>
+          <Icon name="eye" size={14} /> Watched
+        </div>
         <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', marginTop: 6 }}>{t.title}</div>
         <div style={{ fontSize: 13, opacity: 0.6, marginTop: 4 }}>How was it?</div>
 

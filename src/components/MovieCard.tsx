@@ -1,6 +1,7 @@
 import { memo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { Title } from '../types'
+import Icon from './Icon'
 
 const pill: CSSProperties = {
   fontSize: 11, fontWeight: 700, letterSpacing: '0.04em',
@@ -48,7 +49,7 @@ function MovieCard({ t, dimmed }: { t: Title; dimmed?: boolean }) {
         <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.04, letterSpacing: '-0.02em' }}>{t.title}</div>
         <div style={{ marginTop: 6, fontSize: 13, opacity: 0.82 }}>{t.year} · {t.genres.join(' · ')}</div>
         <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {t.inTheaters && <span style={theaterBadge}>🎬 In Theaters</span>}
+          {t.inTheaters && <span style={{ ...theaterBadge, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="ticket" size={13} /> In Theaters</span>}
           {t.providers.map(p => <span key={p} style={badge}>{p}</span>)}
         </div>
       </div>
