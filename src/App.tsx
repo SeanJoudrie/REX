@@ -113,7 +113,7 @@ export default function App() {
               action={{ label: 'Start over', onClick: () => setSeen([]) }} />
           )
         ) : (
-          <Watchlist items={watchlist} onOpen={setDetail} />
+          <Watchlist items={watchlist} onOpen={setDetail} onRemove={toggleSave} />
         )}
       </main>
 
