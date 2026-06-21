@@ -30,12 +30,14 @@ export default function Detail({ t, saved, onClose, onToggleSave }: {
   const [dragY, setDragY] = useState(0)
   const dragStart = useRef<number | null>(null)
 
-  // Animated close → then unmount via parent.
+  // Animated close. We pop our own history entry (below); the resulting popstate
+  // is the single close path, which keeps Back-button and in-app close identical
+  // and is safe under StrictMode's double-invoked effects.
   const close = useCallback(() => {
-    if (reduced) { onClose(); return }
+    if (reduced) { window.history.back(); return }
     setExiting(true)
-    window.setTimeout(onClose, 220)
-  }, [reduced, onClose])
+    window.setTimeout(() => window.history.back(), 200)
+  }, [reduced])
 
   // Slide-up enter.
   useEffect(() => {
@@ -82,16 +84,13 @@ export default function Detail({ t, saved, onClose, onToggleSave }: {
   }, [close])
 
   // Give the system Back gesture something to pop instead of exiting the app.
+  // Every close (button, Escape, backdrop, drag) routes through history.back(),
+  // so popstate is the one and only place that calls onClose.
   useEffect(() => {
-    const popped = { current: false }
     window.history.pushState({ rexDetail: true }, '')
-    const onPop = () => { popped.current = true; onClose() }
+    const onPop = () => onClose()
     window.addEventListener('popstate', onPop)
-    return () => {
-      window.removeEventListener('popstate', onPop)
-      // Closed via button/backdrop (not Back): remove the entry we added.
-      if (!popped.current && window.history.state?.rexDetail) window.history.back()
-    }
+    return () => window.removeEventListener('popstate', onPop)
   }, [onClose])
 
   // Drag-down-to-dismiss, scoped to the grab handle so it never fights scroll.
