@@ -28,11 +28,11 @@ export default function App() {
   // explicit loading + error + retry path.
   const load = useCallback(() => {
     setStatus('loading')
-    let alive = true
-    fetchDeck({ mediaTypes: ['movie', 'tv'] })
-      .then(d => { if (alive) { setPool(d); setStatus('ready') } })
-      .catch(() => { if (alive) setStatus('error') })
-    return () => { alive = false }
+    const ctrl = new AbortController()
+    fetchDeck({ mediaTypes: ['movie', 'tv'] }, ctrl.signal)
+      .then(d => { setPool(d); setStatus('ready') })
+      .catch((e: unknown) => { if ((e as Error)?.name !== 'AbortError') setStatus('error') })
+    return () => ctrl.abort()
   }, [])
   useEffect(() => load(), [load])
 
