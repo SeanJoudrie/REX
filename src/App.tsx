@@ -8,7 +8,10 @@ import Watchlist from './components/Watchlist'
 import Watched from './components/Watched'
 import Detail from './components/Detail'
 import RatingSheet from './components/RatingSheet'
+import Onboarding from './components/Onboarding'
 import Icon from './components/Icon'
+import type { TasteVec } from './lib/taste'
+import { applySignal, bottomGenres, rankDeck, topGenres, LIKE_DELTA, PASS_DELTA, starDelta } from './lib/taste'
 
 type Screen = 'deck' | 'watchlist' | 'watched'
 type Filter = 'all' | MediaType
@@ -34,6 +37,8 @@ export default function App() {
   const [seen, setSeen] = useState<string[]>(initial.seen)
   const [likes, setLikes] = useState<string[]>(initial.likes)
   const [dislikes, setDislikes] = useState<string[]>(initial.dislikes)
+  const [taste, setTaste] = useState<TasteVec>(initial.taste)
+  const [onboarded, setOnboarded] = useState<boolean>(initial.onboarded)
   const [pool, setPool] = useState<Title[]>([])
   const [status, setStatus] = useState<Status>('loading')
   const [screen, setScreen] = useState<Screen>('deck')
@@ -47,11 +52,20 @@ export default function App() {
   const [detail, setDetail] = useState<Title | null>(null)
   const [ratingFor, setRatingFor] = useState<Title | null>(null)
 
+  // Latest taste read inside load() via a ref, so learning doesn't trigger a
+  // refetch on every swipe — it applies on the next deck (filter change / fresh
+  // batch / reopen).
+  const tasteRef = useRef(taste)
+  useEffect(() => { tasteRef.current = taste }, [taste])
+
   const load = useCallback(() => {
     setStatus('loading')
     const ctrl = new AbortController()
+    const v = tasteRef.current
     const mediaTypes: MediaType[] = filter === 'all' ? ['movie', 'tv'] : [filter]
     const tasteGenres = likes.filter(g => g !== 'New Releases')
+    const withGenres = Array.from(new Set([...tasteGenres, ...topGenres(v)]))
+    const withoutGenres = Array.from(new Set([...dislikes, ...bottomGenres(v)]))
     const effSort = sort === 'popular' && likes.includes('New Releases') ? 'new' : sort
     fetchDeck({
       mediaTypes,
@@ -60,10 +74,10 @@ export default function App() {
       sort: effSort,
       service: service ?? undefined,
       actor: actor ?? undefined,
-      withGenres: genre ? undefined : (tasteGenres.length ? tasteGenres : undefined),
-      withoutGenres: dislikes.length ? dislikes : undefined,
+      withGenres: genre ? undefined : (withGenres.length ? withGenres : undefined),
+      withoutGenres: withoutGenres.length ? withoutGenres : undefined,
     }, ctrl.signal)
-      .then(d => { setPool(d); setStatus('ready') })
+      .then(d => { setPool(rankDeck(d, tasteRef.current)); setStatus('ready') })
       .catch((e: unknown) => { if ((e as Error)?.name !== 'AbortError') setStatus('error') })
     return () => ctrl.abort()
   }, [filter, genre, year, sort, service, actor, likes, dislikes])
@@ -72,8 +86,8 @@ export default function App() {
   const hydrated = useRef(false)
   useEffect(() => {
     if (!hydrated.current) { hydrated.current = true; return }
-    saveState({ watchlist, watched, seen, likes, dislikes })
-  }, [watchlist, watched, seen, likes, dislikes])
+    saveState({ watchlist, watched, seen, likes, dislikes, taste, onboarded })
+  }, [watchlist, watched, seen, likes, dislikes, taste, onboarded])
 
   const excluded = useMemo(() => {
     const s = new Set(seen)
@@ -89,8 +103,15 @@ export default function App() {
 
   const markSeen = (k: string) => setSeen(s => (s.includes(k) ? s : [...s, k]))
 
-  const like = (t: Title) => { const k = keyOf(t); markSeen(k); setWatchlist(w => (w.some(x => keyOf(x) === k) ? w : [...w, t])) }
-  const pass = (t: Title) => markSeen(keyOf(t))
+  const like = (t: Title) => {
+    const k = keyOf(t); markSeen(k)
+    setWatchlist(w => (w.some(x => keyOf(x) === k) ? w : [...w, t]))
+    setTaste(v => applySignal(v, t.genres, LIKE_DELTA)) // amplify these genres
+  }
+  const pass = (t: Title) => {
+    markSeen(keyOf(t))
+    setTaste(v => applySignal(v, t.genres, PASS_DELTA)) // gently suppress
+  }
 
   const markWatched = (t: Title) => {
     const k = keyOf(t)
@@ -99,7 +120,14 @@ export default function App() {
     setWatched(list => (list.some(x => keyOf(x) === k) ? list : [...list, { ...t, stars: 0 }]))
     setRatingFor(t)
   }
-  const rate = (t: Title, stars: number) => { const k = keyOf(t); setWatched(list => list.map(x => (keyOf(x) === k ? { ...x, stars } : x))) }
+  const rate = (t: Title, stars: number) => {
+    const k = keyOf(t)
+    const prev = watched.find(x => keyOf(x) === k)?.stars ?? 0
+    setWatched(list => list.map(x => (keyOf(x) === k ? { ...x, stars } : x)))
+    const contr = (s: number) => (s ? starDelta(s) : 0) // unrated counts as neutral
+    const d = contr(stars) - contr(prev)
+    if (d) setTaste(v => applySignal(v, t.genres, d)) // stars push hardest
+  }
   const removeWatched = (t: WatchedItem) => setWatched(list => list.filter(x => keyOf(x) !== keyOf(t)))
 
   const toggleSave = (t: Title) => {
@@ -215,6 +243,7 @@ export default function App() {
 
       {detail && <Detail t={detail} saved={isSaved(detail)} onClose={() => setDetail(null)} onToggleSave={toggleSave} />}
       {ratingFor && <RatingSheet t={ratingFor} onRate={s => { rate(ratingFor, s); setRatingFor(null) }} onClose={() => setRatingFor(null)} />}
+      {!onboarded && <Onboarding onDone={() => setOnboarded(true)} />}
     </div>
   )
 }
