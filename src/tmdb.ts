@@ -16,8 +16,10 @@ const FALLBACK_GRADIENT: [string, string] = ['#3b3b52', '#15151f']
 
 export interface DeckQuery {
   mediaTypes: MediaType[]
-  genres?: string[]
-  providers?: string[]
+  /** Single genre name to filter/recommend by (proxy maps it to a TMDB id). */
+  genre?: string
+  /** Release / first-air year. */
+  year?: number
   region?: string
   page?: number
 }
@@ -59,9 +61,14 @@ function toTitle(raw: unknown): Title | null {
 
 export async function fetchDeck(query: DeckQuery, signal?: AbortSignal): Promise<Title[]> {
   if (!PROXY) {
-    // No proxy configured yet — play with the sample deck, honoring mediaTypes.
+    // No proxy configured yet — play with the sample deck, honoring the filters.
     const types = new Set(query.mediaTypes)
-    return SAMPLE_TITLES.filter(t => types.has(t.mediaType))
+    const g = query.genre?.toLowerCase()
+    return SAMPLE_TITLES.filter(t =>
+      types.has(t.mediaType) &&
+      (!g || t.genres.some(x => x.toLowerCase() === g)) &&
+      (!query.year || t.year === query.year),
+    )
   }
 
   // Live path. Bound the request with a timeout and honor a caller abort

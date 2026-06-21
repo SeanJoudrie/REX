@@ -26,7 +26,11 @@ jobs:
           cache: npm
       - run: npm ci
       # Project Pages serve from /<repo>/, so the app must be built with that base.
+      # VITE_TMDB_PROXY points the client at the Edge Function (public URL; the
+      # TMDB key itself lives only as a secret inside that function).
       - run: npx vite build --base=/REX/
+        env:
+          VITE_TMDB_PROXY: https://lhdqekljtofxmrsrisdv.supabase.co/functions/v1
       - uses: actions/configure-pages@v5
         with:
           enablement: true
