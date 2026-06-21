@@ -16,9 +16,12 @@ interface Persisted {
    *  skip in the deck. Keyed by (mediaType, id) because TMDB reuses numeric ids
    *  across movies and TV. */
   seen: string[]
+  /** Taste prefs that bias the deck: tags the user wants more / less of. */
+  likes: string[]
+  dislikes: string[]
 }
 
-const EMPTY: Persisted = { watchlist: [], watched: [], seen: [] }
+const EMPTY: Persisted = { watchlist: [], watched: [], seen: [], likes: [], dislikes: [] }
 
 export function loadState(): Persisted {
   try {
