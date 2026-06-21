@@ -4,14 +4,16 @@ import type { Title } from '../types'
 // can swipe and build a watchlist with no account (per the UX spec). When
 // Supabase auth lands, this becomes the offline write-queue mirror.
 
-const KEY = 'rex_state_v1'
+const KEY = 'rex_state_v2'
 
 interface Persisted {
   /** Full title objects for right-swipes, denormalized so the watchlist renders
-   *  with zero API calls (per the architecture teardown §2.4). */
+   *  with zero API calls. */
   watchlist: Title[]
-  /** Ids of every title already swiped (like or pass), to skip in the deck. */
-  seen: number[]
+  /** Composite "mediaType-id" keys of every title already swiped or saved, to
+   *  skip in the deck. Keyed by (mediaType, id) because TMDB reuses numeric ids
+   *  across movies and TV. */
+  seen: string[]
 }
 
 const EMPTY: Persisted = { watchlist: [], seen: [] }
@@ -19,7 +21,17 @@ const EMPTY: Persisted = { watchlist: [], seen: [] }
 export function loadState(): Persisted {
   try {
     const raw = localStorage.getItem(KEY)
-    return raw ? { ...EMPTY, ...JSON.parse(raw) } : { ...EMPTY }
+    if (raw) return { ...EMPTY, ...JSON.parse(raw) }
+    // One-time migration from v1 (seen was number[] keyed by id alone, which is
+    // ambiguous once TMDB lands). Preserve the watchlist and rebuild seen from
+    // it; the old numeric passes are unrecoverable without mediaType, so drop.
+    const v1raw = localStorage.getItem('rex_state_v1')
+    if (v1raw) {
+      const v1 = JSON.parse(v1raw) as { watchlist?: Title[] }
+      const watchlist = v1.watchlist ?? []
+      return { watchlist, seen: watchlist.map(t => `${t.mediaType}-${t.id}`) }
+    }
+    return { ...EMPTY }
   } catch {
     return { ...EMPTY }
   }

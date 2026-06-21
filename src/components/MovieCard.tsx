@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type { CSSProperties } from 'react'
 import type { Title } from '../types'
 
@@ -15,7 +16,7 @@ const badge: CSSProperties = {
 
 /** Poster-first card: thin, decision-relevant info only (per the UX teardown).
  *  Real synopsis lives in the detail view. */
-export default function MovieCard({ t, dimmed }: { t: Title; dimmed?: boolean }) {
+function MovieCard({ t, dimmed }: { t: Title; dimmed?: boolean }) {
   return (
     <div className="no-select" style={{
       position: 'absolute', inset: 0, borderRadius: 24, overflow: 'hidden',
@@ -48,3 +49,5 @@ export default function MovieCard({ t, dimmed }: { t: Title; dimmed?: boolean })
     </div>
   )
 }
+
+export default memo(MovieCard)
