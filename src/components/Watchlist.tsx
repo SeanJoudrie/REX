@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Title } from '../types'
+import Poster from './Poster'
 
 type Sort = 'added' | 'rating' | 'title'
 
@@ -74,11 +75,8 @@ export default function Watchlist({ items, onOpen, onRemove }: {
           <div key={`${t.mediaType}-${t.id}`} style={{ position: 'relative' }}>
             <button onClick={() => onOpen(t)} aria-label={`Open ${t.title}`}
               style={{ width: '100%', textAlign: 'left', borderRadius: 16, overflow: 'hidden', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.08)', background: '#15151F', padding: 0 }}>
-              <div style={{ height: 150, position: 'relative', background: t.poster ? '#111' : `linear-gradient(155deg, ${t.gradient[0]}, ${t.gradient[1]})` }}>
-                {t.poster && (
-                  <img src={t.poster} alt="" draggable={false}
-                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-                )}
+              <div style={{ height: 150, position: 'relative', background: `linear-gradient(155deg, ${t.gradient[0]}, ${t.gradient[1]})` }}>
+                <Poster src={t.poster} />
                 <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 999, background: 'rgba(0,0,0,0.5)' }}>★ {t.rating.toFixed(1)}</span>
               </div>
               <div style={{ padding: '10px 11px 12px' }}>
