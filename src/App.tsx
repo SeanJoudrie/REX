@@ -20,6 +20,12 @@ const keyOf = (t: Title) => `${t.mediaType}-${t.id}`
 const GENRES = ['Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Documentary', 'Drama', 'Fantasy', 'Horror', 'Mystery', 'Romance', 'Sci-Fi', 'Thriller']
 const NOW = new Date().getFullYear()
 const YEARS = Array.from({ length: NOW - 2009 }, (_, i) => NOW - i).concat([2005, 2000, 1995, 1990, 1980])
+const SORTS: [string, string][] = [['popular', '🔥 Popular'], ['top', '★ Top Rated'], ['box_office', '💰 Box Office'], ['new', '🆕 Newest'], ['hidden', '💎 Hidden Gems']]
+
+const pillSelect = (active: boolean) => ({
+  flexShrink: 0, fontSize: 12.5, fontWeight: 700, padding: '6px 10px', borderRadius: 999, cursor: 'pointer',
+  background: active ? '#fff' : 'rgba(255,255,255,0.08)', color: active ? '#0B0B12' : '#fff', border: '1px solid rgba(255,255,255,0.16)',
+})
 
 export default function App() {
   const initial = useMemo(loadState, [])
@@ -32,6 +38,9 @@ export default function App() {
   const [filter, setFilter] = useState<Filter>('all')
   const [genre, setGenre] = useState<string | null>(null)
   const [year, setYear] = useState<number | null>(null)
+  const [sort, setSort] = useState<string>('popular')
+  const [actor, setActor] = useState<string | null>(null)
+  const [actorInput, setActorInput] = useState('')
   const [detail, setDetail] = useState<Title | null>(null)
   const [ratingFor, setRatingFor] = useState<Title | null>(null)
 
@@ -41,11 +50,11 @@ export default function App() {
     setStatus('loading')
     const ctrl = new AbortController()
     const mediaTypes: MediaType[] = filter === 'all' ? ['movie', 'tv'] : [filter]
-    fetchDeck({ mediaTypes, genre: genre ?? undefined, year: year ?? undefined }, ctrl.signal)
+    fetchDeck({ mediaTypes, genre: genre ?? undefined, year: year ?? undefined, sort, actor: actor ?? undefined }, ctrl.signal)
       .then(d => { setPool(d); setStatus('ready') })
       .catch((e: unknown) => { if ((e as Error)?.name !== 'AbortError') setStatus('error') })
     return () => ctrl.abort()
-  }, [filter, genre, year])
+  }, [filter, genre, year, sort, actor])
   useEffect(() => load(), [load])
 
   const hydrated = useRef(false)
@@ -96,7 +105,7 @@ export default function App() {
     markSeen(k)
   }
 
-  const filtersActive = filter !== 'all' || genre !== null || year !== null
+  const filtersActive = filter !== 'all' || genre !== null || year !== null || sort !== 'popular' || actor !== null
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', maxWidth: 640, margin: '0 auto' }}>
@@ -118,18 +127,37 @@ export default function App() {
         )}
       </header>
 
-      {/* Genre + year filters (deck only) */}
+      {/* Sort / year / genre filters (deck only) */}
       {screen === 'deck' && (
-        <div role="group" aria-label="Filter by genre and year" style={{ display: 'flex', gap: 7, overflowX: 'auto', padding: '4px 16px 8px', WebkitOverflowScrolling: 'touch' }}>
-          <select aria-label="Year" value={year ?? ''} onChange={e => setYear(e.target.value ? Number(e.target.value) : null)}
-            style={{ flexShrink: 0, fontSize: 12.5, fontWeight: 700, padding: '6px 10px', borderRadius: 999, cursor: 'pointer',
-              background: year ? '#fff' : 'rgba(255,255,255,0.08)', color: year ? '#0B0B12' : '#fff', border: '1px solid rgba(255,255,255,0.16)' }}>
+        <div role="group" aria-label="Sort and filter" style={{ display: 'flex', gap: 7, overflowX: 'auto', padding: '4px 16px 8px', WebkitOverflowScrolling: 'touch' }}>
+          <select aria-label="Sort" value={sort} onChange={e => setSort(e.target.value)} style={pillSelect(sort !== 'popular')}>
+            {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <select aria-label="Year" value={year ?? ''} onChange={e => setYear(e.target.value ? Number(e.target.value) : null)} style={pillSelect(!!year)}>
             <option value="">Any year</option>
             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
           <Chip active={genre === null} onClick={() => setGenre(null)}>All genres</Chip>
           {GENRES.map(g => <Chip key={g} active={genre === g} onClick={() => setGenre(g)}>{g}</Chip>)}
         </div>
+      )}
+
+      {/* Actor search (deck only) */}
+      {screen === 'deck' && (
+        <form onSubmit={e => { e.preventDefault(); setActor(actorInput.trim() || null) }}
+          style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '0 16px 8px' }}>
+          <input value={actorInput} onChange={e => setActorInput(e.target.value)} enterKeyHint="search"
+            placeholder="🔍 Search by actor… (e.g. Zendaya)"
+            style={{ flex: 1, fontSize: 13, fontWeight: 600, padding: '9px 14px', borderRadius: 999, outline: 'none',
+              background: 'rgba(255,255,255,0.08)', color: '#fff', border: `1px solid ${actor ? '#22c55e' : 'rgba(255,255,255,0.16)'}` }} />
+          {actor && (
+            <button type="button" onClick={() => { setActor(null); setActorInput('') }} aria-label="Clear actor search"
+              style={{ flexShrink: 0, fontSize: 12.5, fontWeight: 700, padding: '8px 12px', borderRadius: 999, cursor: 'pointer',
+                background: '#22c55e', color: '#06210f', border: 'none' }}>
+              {actor} ✕
+            </button>
+          )}
+        </form>
       )}
 
       {/* Main */}
