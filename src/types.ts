@@ -1,5 +1,15 @@
 export type MediaType = 'movie' | 'tv'
 
+export type TagType = 'genre' | 'person' | 'company' | 'keyword'
+/** A taste entity attached to a title (cast, director, studio, keyword, genre).
+ *  Canonical identity is (type, tmdb id); name is a display label. */
+export interface Tag {
+  type: TagType
+  id: number
+  name: string
+  role?: string // cast | director | creator | studio
+}
+
 export interface Title {
   /** TMDB id once wired; for sample data it's a stable local id. */
   id: number
@@ -17,6 +27,8 @@ export interface Title {
   gradient: [string, string]
   /** Currently in cinemas (not streaming yet). */
   inTheaters?: boolean
+  /** Enriched taste entities (populated on the detail hydrate). */
+  tags?: Tag[]
 }
 
 /** A title the user has marked watched, with their private 1–5 star rating

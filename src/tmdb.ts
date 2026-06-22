@@ -1,5 +1,13 @@
-import type { MediaType, Title } from './types'
+import type { MediaType, Tag, TagType, Title } from './types'
 import { SAMPLE_TITLES } from './data/titles'
+
+const TAG_TYPES = new Set<TagType>(['genre', 'person', 'company', 'keyword'])
+const toTags = (v: unknown): Tag[] | undefined => {
+  if (!Array.isArray(v)) return undefined
+  const tags = v.filter((x): x is Tag =>
+    !!x && TAG_TYPES.has((x as Tag).type) && typeof (x as Tag).id === 'number' && typeof (x as Tag).name === 'string')
+  return tags.length ? tags.map(t => ({ type: t.type, id: t.id, name: t.name, role: t.role })) : undefined
+}
 
 // ── TMDB deck source ─────────────────────────────────────────────────────────
 // Per the build spec, TMDB calls MUST go through a server-side proxy (a Supabase
@@ -29,6 +37,8 @@ export interface DeckQuery {
   /** Taste bias: genres to lean into / avoid. */
   withGenres?: string[]
   withoutGenres?: string[]
+  /** Entity pivot — a single tag deck (Denzel deck, A24 deck, …). */
+  pivot?: { type: string; id?: number; name?: string }
   region?: string
   page?: number
 }
@@ -76,6 +86,8 @@ function toTitle(raw: unknown): Title | null {
     rating: Number.isFinite(Number(r.rating)) ? Number(r.rating) : 0,
     poster: typeof r.poster === 'string' ? r.poster : undefined,
     gradient,
+    inTheaters: r.inTheaters === true || undefined,
+    tags: toTags(r.tags),
   }
 }
 
@@ -84,6 +96,15 @@ export async function fetchDeck(query: DeckQuery, signal?: AbortSignal): Promise
     // No proxy configured yet — play with the sample deck, honoring the filters.
     // Actor search needs cast data the sample doesn't have, so it's a no-op here.
     const types = new Set(query.mediaTypes)
+    // Pivot decks: the sample set only has genre data, so genre pivots filter
+    // locally and other entity pivots return empty (live data has them).
+    if (query.pivot) {
+      if (query.pivot.type === 'genre') {
+        const pg = (query.pivot.name ?? '').toLowerCase()
+        return SAMPLE_TITLES.filter(t => types.has(t.mediaType) && t.genres.some(x => x.toLowerCase() === pg))
+      }
+      return []
+    }
     const g = query.genre?.toLowerCase()
     const svc = query.service?.toLowerCase()
     const likes = (query.withGenres ?? []).map(x => x.toLowerCase())
