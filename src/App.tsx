@@ -51,6 +51,7 @@ export default function App() {
   const [actor, setActor] = useState<string | null>(null)
   const [actorInput, setActorInput] = useState('')
   const [detail, setDetail] = useState<Title | null>(null)
+  const [pivot, setPivot] = useState<{ type: string; id?: number; name?: string; label: string } | null>(null)
   const [ratingFor, setRatingFor] = useState<Title | null>(null)
   const [undo, setUndo] = useState<{ card: Title; action: 'like' | 'pass' | 'watched'; delta: number } | null>(null)
   const undoTimer = useRef<number | null>(null)
@@ -78,13 +79,14 @@ export default function App() {
       sort: effSort,
       service: service ?? undefined,
       actor: actor ?? undefined,
+      pivot: pivot ? { type: pivot.type, id: pivot.id, name: pivot.name } : undefined,
       withGenres: genre ? undefined : (withGenres.length ? withGenres : undefined),
       withoutGenres: withoutGenres.length ? withoutGenres : undefined,
     }, ctrl.signal)
       .then(d => { setPool(rankDeck(d, tasteRef.current)); setStatus('ready') })
       .catch((e: unknown) => { if ((e as Error)?.name !== 'AbortError') setStatus('error') })
     return () => ctrl.abort()
-  }, [filter, genre, year, sort, service, actor, likes, dislikes])
+  }, [filter, genre, year, sort, service, actor, likes, dislikes, pivot])
   useEffect(() => load(), [load])
 
   // Cold-open a shared deep link (#/t/:type/:id): strip the hash, fetch the
@@ -173,6 +175,23 @@ export default function App() {
     markSeen(k)
   }
 
+  // Open detail immediately, then hydrate tags/poster from the proxy.
+  const openDetail = (t: Title) => {
+    setDetail(t)
+    if (USING_SAMPLE) return
+    fetchTitleById(t.mediaType, t.id).then(full => {
+      if (!full) return
+      setDetail(d => (d && keyOf(d) === keyOf(t) ? { ...d, tags: full.tags ?? d.tags, poster: d.poster ?? full.poster, overview: d.overview || full.overview } : d))
+    }).catch(() => {})
+  }
+
+  // Tap any tag → a single-entity deck (Denzel deck, A24 deck, …).
+  const deckFromTag = (tag: { type: string; id: number; name: string }) => {
+    setDetail(null)
+    setScreen('deck')
+    setPivot({ type: tag.type, id: tag.id, name: tag.name, label: tag.name })
+  }
+
   // Taste prefs — a tag is either liked, disliked, or neither.
   const toggleTaste = (tag: string, kind: 'like' | 'dislike') => {
     if (kind === 'like') {
@@ -249,6 +268,19 @@ export default function App() {
         </div>
       )}
 
+      {/* Active entity-pivot banner */}
+      {screen === 'deck' && pivot && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '0 16px 6px', padding: '8px 12px', borderRadius: 12, background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.35)' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            Deck: <span style={{ color: '#86efac' }}>{pivot.label}</span>
+          </span>
+          <button onClick={() => setPivot(null)} aria-label="Clear pivot deck"
+            style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.18)' }}>
+            Clear <Icon name="x" size={13} />
+          </button>
+        </div>
+      )}
+
       {/* Main */}
       <main style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: screen === 'deck' ? 'hidden' : 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: screen === 'deck' ? 'center' : 'flex-start', padding: screen === 'deck' ? '6px 16px' : 0 }}>
         {screen === 'deck' ? (
@@ -257,16 +289,16 @@ export default function App() {
           ) : status === 'error' ? (
             <Centered icon={<Icon name="warning" size={40} />} title="Couldn't load the deck" sub="Check your connection and try again." action={{ label: 'Retry', onClick: load }} />
           ) : deck.length > 0 ? (
-            <SwipeDeck deck={deck} onLike={like} onPass={pass} onWatched={markWatched} onOpenDetail={setDetail} />
+            <SwipeDeck deck={deck} onLike={like} onPass={pass} onWatched={markWatched} onOpenDetail={openDetail} />
           ) : (
             <Centered icon={<Icon name="film" size={40} />} title="That's the deck for now"
               sub={`${filtersActive ? 'Try different filters up top, or ' : ''}get a fresh batch.`}
               action={{ label: 'Fresh batch', onClick: () => { setSeen([]); load() } }} />
           )
         ) : screen === 'watchlist' ? (
-          <Watchlist items={watchlist} onOpen={setDetail} onRemove={toggleSave} />
+          <Watchlist items={watchlist} onOpen={openDetail} onRemove={toggleSave} />
         ) : (
-          <Watched items={watched} onRate={rate} onRemove={removeWatched} onOpen={setDetail}
+          <Watched items={watched} onRate={rate} onRemove={removeWatched} onOpen={openDetail}
             likes={likes} dislikes={dislikes} onTaste={toggleTaste} onResetTaste={resetTaste} />
         )}
       </main>
@@ -292,7 +324,7 @@ export default function App() {
         </div>
       )}
 
-      {detail && <Detail t={detail} saved={isSaved(detail)} onClose={() => setDetail(null)} onToggleSave={toggleSave} />}
+      {detail && <Detail t={detail} saved={isSaved(detail)} onClose={() => setDetail(null)} onToggleSave={toggleSave} onPivot={deckFromTag} />}
       {ratingFor && <RatingSheet t={ratingFor} onRate={s => { rate(ratingFor, s); setRatingFor(null) }} onClose={() => setRatingFor(null)} />}
       {!onboarded && <Onboarding onDone={() => setOnboarded(true)} />}
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}

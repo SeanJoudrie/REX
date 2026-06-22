@@ -15,16 +15,21 @@ function watchUrl(t: Title): string {
   return `https://www.justwatch.com/us/search?q=${encodeURIComponent(t.title)}`
 }
 
-export default function Detail({ t, saved, onClose, onToggleSave }: {
+const tagColor = (type: string) =>
+  type === 'person' ? 'rgba(56,189,248,0.5)' : type === 'company' ? 'rgba(246,194,68,0.5)' : type === 'keyword' ? 'rgba(255,255,255,0.18)' : 'rgba(34,197,94,0.5)'
+
+export default function Detail({ t, saved, onClose, onToggleSave, onPivot }: {
   t: Title
   saved: boolean
   onClose: () => void
   onToggleSave: (t: Title) => void
+  onPivot: (tag: { type: string; id: number; name: string }) => void
 }) {
   const reduced = reducedMotion()
   const sheetRef = useRef<HTMLDivElement>(null)
   const restoreRef = useRef<HTMLElement | null>(null)
   const titleId = `rex-detail-title-${t.mediaType}-${t.id}`
+  const chips = (t.tags && t.tags.length ? t.tags : t.genres.map(g => ({ type: 'genre' as const, id: 0, name: g }))).slice(0, 12)
 
   const [entered, setEntered] = useState(reduced) // reduced: appear immediately
   const [exiting, setExiting] = useState(false)
@@ -160,6 +165,22 @@ export default function Detail({ t, saved, onClose, onToggleSave }: {
           <div id={titleId} style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em' }}>{t.title}</div>
           <div style={{ marginTop: 5, fontSize: 13, opacity: 0.7 }}>{t.year} · {t.mediaType === 'tv' ? 'TV Series' : 'Film'} · ★ {t.rating.toFixed(1)} · {t.genres.join(', ')}</div>
           <p style={{ marginTop: 14, fontSize: 14.5, lineHeight: 1.6, opacity: 0.9 }}>{t.overview}</p>
+
+          {/* Tappable taste tags — each pivots the deck to that entity */}
+          {chips.length > 0 && (
+            <>
+              <div style={{ marginTop: 20, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.6 }}>More like this</div>
+              <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {chips.map(c => (
+                  <button key={`${c.type}:${c.id}:${c.name}`} onClick={() => onPivot({ type: c.type, id: c.id, name: c.name })}
+                    style={{ fontSize: 12.5, fontWeight: 700, padding: '7px 12px', borderRadius: 999, cursor: 'pointer',
+                      background: 'rgba(255,255,255,0.08)', color: '#fff', border: `1px solid ${tagColor(c.type)}` }}>
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
           <div style={{ marginTop: 20, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.6 }}>Where to watch</div>
           <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
