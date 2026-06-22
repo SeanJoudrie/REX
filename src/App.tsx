@@ -9,6 +9,7 @@ import Watched from './components/Watched'
 import Detail from './components/Detail'
 import RatingSheet from './components/RatingSheet'
 import Onboarding from './components/Onboarding'
+import Settings from './components/Settings'
 import Icon from './components/Icon'
 import type { TasteVec } from './lib/taste'
 import { applySignal, bottomGenres, rankDeck, topGenres, LIKE_DELTA, PASS_DELTA, starDelta } from './lib/taste'
@@ -53,6 +54,7 @@ export default function App() {
   const [ratingFor, setRatingFor] = useState<Title | null>(null)
   const [undo, setUndo] = useState<{ card: Title; action: 'like' | 'pass' | 'watched'; delta: number } | null>(null)
   const undoTimer = useRef<number | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   // Latest taste read inside load() via a ref, so learning doesn't trigger a
   // refetch on every swipe — it applies on the next deck (filter change / fresh
@@ -180,8 +182,14 @@ export default function App() {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', maxWidth: 640, margin: '0 auto' }}>
       {/* Top bar */}
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(14px, env(safe-area-inset-top)) 18px 6px' }}>
-        <div style={{ fontWeight: 900, fontSize: 22, letterSpacing: '0.14em' }}>
-          R<span style={{ color: '#22c55e' }}>E</span>X
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ fontWeight: 900, fontSize: 22, letterSpacing: '0.14em' }}>
+            R<span style={{ color: '#22c55e' }}>E</span>X
+          </div>
+          <button onClick={() => setSettingsOpen(true)} aria-label="Settings"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 999, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.55)', cursor: 'pointer' }}>
+            <Icon name="gear" size={18} />
+          </button>
         </div>
         {screen === 'deck' && (
           <div role="group" aria-label="Filter by type" style={{ display: 'flex', gap: 6, background: 'rgba(255,255,255,0.06)', padding: 4, borderRadius: 999 }}>
@@ -278,6 +286,7 @@ export default function App() {
       {detail && <Detail t={detail} saved={isSaved(detail)} onClose={() => setDetail(null)} onToggleSave={toggleSave} />}
       {ratingFor && <RatingSheet t={ratingFor} onRate={s => { rate(ratingFor, s); setRatingFor(null) }} onClose={() => setRatingFor(null)} />}
       {!onboarded && <Onboarding onDone={() => setOnboarded(true)} />}
+      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
     </div>
   )
 }

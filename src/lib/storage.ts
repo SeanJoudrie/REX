@@ -51,4 +51,15 @@ export function saveState(state: Persisted): void {
   try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { /* quota / private mode */ }
 }
 
+/** Raw persisted JSON (for backup/export). */
+export function exportRaw(): string {
+  return localStorage.getItem(KEY) ?? JSON.stringify(EMPTY)
+}
+/** Replace persisted state from a backup. Throws if the JSON is invalid. */
+export function importRaw(json: string): void {
+  const parsed = JSON.parse(json) // validate
+  if (!parsed || typeof parsed !== 'object') throw new Error('invalid backup')
+  localStorage.setItem(KEY, JSON.stringify({ ...EMPTY, ...parsed }))
+}
+
 export type { Persisted }
