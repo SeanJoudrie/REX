@@ -131,4 +131,21 @@ export async function fetchDeck(query: DeckQuery, signal?: AbortSignal): Promise
   }
 }
 
+/** Fetch a single title by id — used to cold-open a shared deep link. */
+export async function fetchTitleById(mediaType: MediaType, id: number, signal?: AbortSignal): Promise<Title | null> {
+  if (!PROXY) return SAMPLE_TITLES.find(t => t.mediaType === mediaType && t.id === id) ?? null
+  try {
+    const res = await fetch(`${PROXY}/discover`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ titleId: id, mediaType }), signal,
+    })
+    if (!res.ok) return null
+    const data: unknown = await res.json()
+    if (!Array.isArray(data)) return null
+    return data.map(toTitle).find((t): t is Title => t !== null) ?? null
+  } catch {
+    return null
+  }
+}
+
 export const USING_SAMPLE = !PROXY

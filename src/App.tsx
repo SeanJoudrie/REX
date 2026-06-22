@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { MediaType, Title, WatchedItem } from './types'
-import { fetchDeck, USING_SAMPLE } from './tmdb'
+import { fetchDeck, fetchTitleById, USING_SAMPLE } from './tmdb'
 import { loadState, saveState } from './lib/storage'
 import SwipeDeck from './components/SwipeDeck'
 import Watchlist from './components/Watchlist'
@@ -86,6 +86,15 @@ export default function App() {
     return () => ctrl.abort()
   }, [filter, genre, year, sort, service, actor, likes, dislikes])
   useEffect(() => load(), [load])
+
+  // Cold-open a shared deep link (#/t/:type/:id): strip the hash, fetch the
+  // title, open its detail sheet.
+  useEffect(() => {
+    const m = location.hash.match(/^#\/t\/(movie|tv)\/(\d+)/)
+    if (!m) return
+    history.replaceState(null, '', location.pathname + location.search)
+    fetchTitleById(m[1] as MediaType, Number(m[2])).then(t => { if (t) setDetail(t) })
+  }, [])
 
   const hydrated = useRef(false)
   useEffect(() => {

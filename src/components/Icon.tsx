@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react'
 type Name =
   | 'discover' | 'bookmark' | 'eye' | 'info' | 'x' | 'check' | 'ticket'
   | 'search' | 'sliders' | 'film' | 'warning' | 'star' | 'list' | 'grid' | 'undo'
-  | 'gear' | 'download' | 'upload'
+  | 'gear' | 'download' | 'upload' | 'share'
 
 const PATHS: Record<Name, string> = {
   // lucide-style 24x24 paths
@@ -25,6 +25,7 @@ const PATHS: Record<Name, string> = {
   gear: 'M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
   download: 'M12 3v12 M7 10l5 5 5-5 M5 21h14',
   upload: 'M12 21V9 M7 14l5-5 5 5 M5 3h14',
+  share: 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8 M16 6l-4-4-4 4 M12 2v13',
 }
 
 export default function Icon({ name, size = 20, fill = false, style }: {
