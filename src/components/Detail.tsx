@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import type { Title } from '../types'
+import Icon from './Icon'
 
 const reducedMotion = () =>
   typeof window !== 'undefined' &&
@@ -27,7 +28,16 @@ export default function Detail({ t, saved, onClose, onToggleSave }: {
 
   const [entered, setEntered] = useState(reduced) // reduced: appear immediately
   const [exiting, setExiting] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [dragY, setDragY] = useState(0)
+
+  const shareUrl = `${location.origin}${location.pathname}#/t/${t.mediaType}/${t.id}`
+  const share = async () => {
+    try {
+      if (navigator.share) await navigator.share({ title: t.title, text: `${t.title} — on REX`, url: shareUrl })
+      else { await navigator.clipboard.writeText(shareUrl); setCopied(true); window.setTimeout(() => setCopied(false), 1600) }
+    } catch { /* user dismissed the share sheet */ }
+  }
   const dragStart = useRef<number | null>(null)
 
   // Animated close. We pop our own history entry (below); the resulting popstate
@@ -87,11 +97,11 @@ export default function Detail({ t, saved, onClose, onToggleSave }: {
   // Every close (button, Escape, backdrop, drag) routes through history.back(),
   // so popstate is the one and only place that calls onClose.
   useEffect(() => {
-    window.history.pushState({ rexDetail: true }, '')
+    window.history.pushState({ rexDetail: true }, '', `#/t/${t.mediaType}/${t.id}`)
     const onPop = () => onClose()
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
-  }, [onClose])
+  }, [onClose, t.mediaType, t.id])
 
   // Drag-down-to-dismiss, scoped to the grab handle so it never fights scroll.
   const onHandleDown = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -133,9 +143,17 @@ export default function Detail({ t, saved, onClose, onToggleSave }: {
           <div style={{ width: 38, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.25)' }} />
         </div>
 
-        <div style={{ height: 150, background: `linear-gradient(155deg, ${t.gradient[0]}, ${t.gradient[1]})`, position: 'relative' }}>
+        <div style={{ height: 150, position: 'relative', background: t.poster ? '#111' : `linear-gradient(155deg, ${t.gradient[0]}, ${t.gradient[1]})` }}>
+          {t.poster && <img src={t.poster} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 20%' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />}
+          <button onClick={share} aria-label="Share"
+            style={{ position: 'absolute', top: 12, right: 56, width: 36, height: 36, borderRadius: 999, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'manipulation' } as CSSProperties}>
+            <Icon name="share" size={17} />
+          </button>
           <button onClick={close} aria-label="Close"
-            style={{ position: 'absolute', top: 12, right: 12, width: 36, height: 36, borderRadius: 999, background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontSize: 18, cursor: 'pointer', touchAction: 'manipulation' } as CSSProperties}>✕</button>
+            style={{ position: 'absolute', top: 12, right: 12, width: 36, height: 36, borderRadius: 999, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'manipulation' } as CSSProperties}>
+            <Icon name="x" size={17} />
+          </button>
+          {copied && <div style={{ position: 'absolute', top: 54, right: 12, fontSize: 11.5, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: 'rgba(34,197,94,0.92)', color: '#06210f' }}>Link copied</div>}
         </div>
 
         <div style={{ padding: '18px 20px 28px' }}>

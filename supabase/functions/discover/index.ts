@@ -107,6 +107,28 @@ Deno.serve(async (req: Request) => {
   if (!TOKEN) return json({ error: "TMDB_TOKEN not set" }, 500);
   try {
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+
+    // Single-title lookup for deep-link cold-open (#/t/:type/:id).
+    if (body.titleId && (body.mediaType === "movie" || body.mediaType === "tv")) {
+      const type = body.mediaType as "movie" | "tv";
+      const region0 = String(body.region || "US");
+      const r = await tmdb(`/${type}/${body.titleId}`, {});
+      const providers = await providersFor(type, r.id, region0);
+      const dateStr = type === "movie" ? r.release_date : r.first_air_date;
+      return json([{
+        id: r.id, mediaType: type,
+        title: type === "movie" ? r.title : r.name,
+        year: dateStr ? Number(String(dateStr).slice(0, 4)) : 0,
+        genres: (r.genres || []).map((g: { name: string }) => g.name).filter(Boolean).slice(0, 3),
+        overview: r.overview || "",
+        providers,
+        rating: typeof r.vote_average === "number" ? r.vote_average : 0,
+        poster: r.poster_path ? IMG + r.poster_path : undefined,
+        gradient: gradientFor(r.id),
+        inTheaters: type === "movie" && providers.length === 0 && isRecent(dateStr),
+      }]);
+    }
+
     const mediaTypes: string[] = Array.isArray(body.mediaTypes) && body.mediaTypes.length ? body.mediaTypes : ["movie", "tv"];
     const region = String(body.region || "US");
     const genreName = String(body.genre || "").toLowerCase();
