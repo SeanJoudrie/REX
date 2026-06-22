@@ -57,6 +57,35 @@ function sortSample(list: Title[], sort?: string): Title[] {
 const stringArray = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
 
+// JustWatch (via TMDB) lists every pricing tier as its own "provider" — "Netflix
+// Standard with Ads", "Amazon Prime Video with Ads", "Disney Plus", etc. Users
+// think in brands, not tiers, so collapse them to one canonical name and dedup.
+function canonProvider(name: string): string {
+  const n = name.trim()
+  const l = n.toLowerCase()
+  if (l.includes('netflix')) return 'Netflix'
+  if (l.includes('disney')) return 'Disney+'
+  if (l.includes('hulu')) return 'Hulu'
+  if (l.includes('hbo') || l === 'max' || l.startsWith('max ')) return 'Max'
+  if (l.includes('amazon') || l.includes('prime video')) return 'Prime Video'
+  if (l.includes('apple tv')) return 'Apple TV+'
+  if (l.includes('paramount')) return 'Paramount+'
+  if (l.includes('peacock')) return 'Peacock'
+  if (l.includes('starz')) return 'Starz'
+  if (l.includes('showtime')) return 'Showtime'
+  if (l.includes('crunchyroll')) return 'Crunchyroll'
+  return n
+}
+function normalizeProviders(v: unknown): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of stringArray(v)) {
+    const c = canonProvider(raw)
+    if (!seen.has(c)) { seen.add(c); out.push(c) }
+  }
+  return out
+}
+
 /** Normalize one item from the (untrusted) proxy payload into a renderable
  *  Title. Returns null for items missing a usable identity — those are dropped
  *  rather than crashing a card. Every other field is coerced/backfilled so the
@@ -82,7 +111,7 @@ function toTitle(raw: unknown): Title | null {
     year: Number.isFinite(Number(r.year)) ? Number(r.year) : 0,
     genres: stringArray(r.genres),
     overview: typeof r.overview === 'string' ? r.overview : '',
-    providers: stringArray(r.providers),
+    providers: normalizeProviders(r.providers),
     rating: Number.isFinite(Number(r.rating)) ? Number(r.rating) : 0,
     poster: typeof r.poster === 'string' ? r.poster : undefined,
     gradient,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { MediaType, Tag, Title, WatchedItem } from './types'
 import { fetchDeck, fetchTitleById, USING_SAMPLE } from './tmdb'
+import type { DeckQuery } from './tmdb'
 import { loadState, saveState } from './lib/storage'
 import SwipeDeck from './components/SwipeDeck'
 import Watchlist from './components/Watchlist'
@@ -29,7 +30,13 @@ const YEARS = Array.from({ length: NOW - 2009 }, (_, i) => NOW - i).concat([2005
 const pillSelect = (active: boolean): CSSProperties => ({
   flexShrink: 0, fontSize: 12.5, fontWeight: 700, padding: '7px 11px', borderRadius: 999, cursor: 'pointer',
   background: active ? '#fff' : 'rgba(255,255,255,0.08)', color: active ? '#0B0B12' : '#fff', border: '1px solid rgba(255,255,255,0.16)',
+  // Force a dark popup so the native option list isn't white-on-white.
+  colorScheme: 'dark',
 })
+
+// The native dropdown popup ignores the pill's translucent background; give each
+// option an explicit dark surface so the list is always legible.
+const OPT: CSSProperties = { background: '#15151F', color: '#fff' }
 
 export default function App() {
   const initial = useMemo(() => {
@@ -45,7 +52,14 @@ export default function App() {
   const [likes, setLikes] = useState<string[]>(initial.likes)
   const [dislikes, setDislikes] = useState<string[]>(initial.dislikes)
   const [affinity, setAffinity] = useState<EntityAff>(initial.affinity)
-  const [page, setPage] = useState(1)
+  // Auto-pagination: the pool grows page-by-page as the deck drains, so the
+  // candidate set is hundreds deep, not one page. pageRef tracks the last page
+  // appended; loadingMore guards against concurrent appends; atEnd latches when
+  // a page yields nothing new.
+  const pageRef = useRef(1)
+  const loadingMore = useRef(false)
+  const poolRef = useRef<Title[]>([])
+  const [atEnd, setAtEnd] = useState(false)
   // Tags for titles whose detail was opened (informed signals + why-this).
   const enrichedTags = useRef<Map<string, Tag[]>>(new Map())
   const [taste, setTaste] = useState<TasteVec>(initial.taste)
@@ -73,16 +87,15 @@ export default function App() {
   const tasteRef = useRef(taste)
   useEffect(() => { tasteRef.current = taste }, [taste])
 
-  const load = useCallback(() => {
-    setStatus('loading')
-    const ctrl = new AbortController()
+  // Build the discover query for a given page off the current filters + taste.
+  const buildQuery = useCallback((p: number): DeckQuery => {
     const v = tasteRef.current
     const mediaTypes: MediaType[] = filter === 'all' ? ['movie', 'tv'] : [filter]
     const tasteGenres = likes.filter(g => g !== 'New Releases')
     const withGenres = Array.from(new Set([...tasteGenres, ...topGenres(v)]))
     const withoutGenres = Array.from(new Set([...dislikes, ...bottomGenres(v)]))
     const effSort = sort === 'popular' && likes.includes('New Releases') ? 'new' : sort
-    fetchDeck({
+    return {
       mediaTypes,
       genre: genre ?? undefined,
       year: year ?? undefined,
@@ -92,13 +105,40 @@ export default function App() {
       pivot: pivot ? { type: pivot.type, id: pivot.id, name: pivot.name } : undefined,
       withGenres: genre ? undefined : (withGenres.length ? withGenres : undefined),
       withoutGenres: withoutGenres.length ? withoutGenres : undefined,
-      page,
-    }, ctrl.signal)
+      page: p,
+    }
+  }, [filter, genre, year, sort, service, actor, likes, dislikes, pivot])
+
+  // Fresh load (filters/taste changed): reset paging and replace the pool.
+  const load = useCallback(() => {
+    setStatus('loading')
+    setAtEnd(false)
+    pageRef.current = 1
+    const ctrl = new AbortController()
+    fetchDeck(buildQuery(1), ctrl.signal)
       .then(d => { setPool(rankDeck(d, tasteRef.current)); setStatus('ready') })
       .catch((e: unknown) => { if ((e as Error)?.name !== 'AbortError') setStatus('error') })
     return () => ctrl.abort()
-  }, [filter, genre, year, sort, service, actor, likes, dislikes, pivot, page])
+  }, [buildQuery])
   useEffect(() => load(), [load])
+
+  // Append the next page, deduped against what's already pooled. A page with no
+  // new titles latches atEnd so we stop hitting the proxy.
+  const loadMore = useCallback(() => {
+    if (loadingMore.current || atEnd) return
+    loadingMore.current = true
+    const next = pageRef.current + 1
+    fetchDeck(buildQuery(next))
+      .then(d => {
+        const have = new Set(poolRef.current.map(keyOf))
+        const fresh = d.filter(t => !have.has(keyOf(t)))
+        if (!fresh.length) { setAtEnd(true); return }
+        pageRef.current = next
+        setPool(prev => [...prev, ...rankDeck(fresh, tasteRef.current)])
+      })
+      .catch(() => { /* keep the current pool; the manual Fresh batch can retry */ })
+      .finally(() => { loadingMore.current = false })
+  }, [buildQuery, atEnd])
 
   // Cold-open a shared deep link (#/t/:type/:id): strip the hash, fetch the
   // title, open its detail sheet.
@@ -115,13 +155,8 @@ export default function App() {
     saveState({ watchlist, watched, seen, likes, dislikes, taste, affinity, tasteDecayedAt: initial.tasteDecayedAt, onboarded })
   }, [watchlist, watched, seen, likes, dislikes, taste, affinity, onboarded, initial.tasteDecayedAt])
 
-  // Reset to page 1 whenever the query (filters/taste) changes; "Fresh batch"
-  // advances the page instead.
-  const filterSig = `${filter}|${genre}|${year}|${sort}|${service}|${actor}|${pivot ? JSON.stringify(pivot) : ''}|${likes.join(',')}|${dislikes.join(',')}`
-  const prevSig = useRef(filterSig)
-  useEffect(() => {
-    if (prevSig.current !== filterSig) { prevSig.current = filterSig; setPage(p => (p === 1 ? p : 1)) }
-  }, [filterSig])
+  // Keep poolRef current so loadMore can dedup synchronously.
+  useEffect(() => { poolRef.current = pool }, [pool])
 
   // Milestone haptic every 10th save.
   const prevWlLen = useRef(watchlist.length)
@@ -138,6 +173,12 @@ export default function App() {
   }, [seen, watchlist, watched])
 
   const deck = useMemo(() => pool.filter(t => !excluded.has(keyOf(t))), [pool, excluded])
+
+  // Auto-paginate: when the visible deck runs low, pull the next page in the
+  // background so the user never feels the wall (unless we've truly run out).
+  useEffect(() => {
+    if (screen === 'deck' && status === 'ready' && !atEnd && deck.length < 6) loadMore()
+  }, [deck.length, screen, status, atEnd, loadMore])
 
   const savedKeys = useMemo(() => new Set(watchlist.map(keyOf)), [watchlist])
   const isSaved = (t: Title) => savedKeys.has(keyOf(t))
@@ -233,7 +274,6 @@ export default function App() {
   const deckFromTag = (tag: { type: string; id: number; name: string }) => {
     setDetail(null)
     setScreen('deck')
-    setPage(1)
     setPivot({ type: tag.type, id: tag.id, name: tag.name, label: tag.name })
   }
 
@@ -293,19 +333,19 @@ export default function App() {
       {screen === 'deck' && (
         <div role="group" aria-label="Sort and filter" style={{ display: 'flex', gap: 7, overflowX: 'auto', padding: '4px 16px 8px', WebkitOverflowScrolling: 'touch' }}>
           <select aria-label="Sort" value={sort} onChange={e => setSort(e.target.value)} style={pillSelect(sort !== 'popular')}>
-            {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {SORTS.map(([v, l]) => <option key={v} value={v} style={OPT}>{l}</option>)}
           </select>
           <select aria-label="Genre" value={genre ?? ''} onChange={e => setGenre(e.target.value || null)} style={pillSelect(!!genre)}>
-            <option value="">All genres</option>
-            {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
+            <option value="" style={OPT}>All genres</option>
+            {GENRES.map(g => <option key={g} value={g} style={OPT}>{g}</option>)}
           </select>
           <select aria-label="Year" value={year ?? ''} onChange={e => setYear(e.target.value ? Number(e.target.value) : null)} style={pillSelect(!!year)}>
-            <option value="">Any year</option>
-            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+            <option value="" style={OPT}>Any year</option>
+            {YEARS.map(y => <option key={y} value={y} style={OPT}>{y}</option>)}
           </select>
           <select aria-label="Streaming service" value={service ?? ''} onChange={e => setService(e.target.value || null)} style={pillSelect(!!service)}>
-            <option value="">Any service</option>
-            {SERVICES.map(s => <option key={s} value={s}>{s}</option>)}
+            <option value="" style={OPT}>Any service</option>
+            {SERVICES.map(s => <option key={s} value={s} style={OPT}>{s}</option>)}
           </select>
 
           <form onSubmit={e => { e.preventDefault(); setActor(actorInput.trim() || null) }} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -355,9 +395,12 @@ export default function App() {
           ) : deck.length > 0 ? (
             <SwipeDeck deck={deck} onLike={like} onPass={pass} onWatched={markWatched} onOpenDetail={openDetail} />
           ) : (
-            <Centered icon={<Icon name="film" size={40} />} title="That's the deck for now"
-              sub={`${filtersActive ? 'Try different filters up top, or ' : ''}get a fresh batch.`}
-              action={{ label: 'Fresh batch', onClick: () => setPage(p => p + 1) }} />
+            <Centered icon={<Icon name="film" size={40} />}
+              title={atEnd ? "You've seen it all" : "That's the deck for now"}
+              sub={atEnd
+                ? `${filtersActive ? 'Try different filters up top to find more.' : 'Adjust your taste or check back later for new titles.'}`
+                : `${filtersActive ? 'Try different filters up top, or ' : ''}get a fresh batch.`}
+              action={atEnd ? undefined : { label: 'Fresh batch', onClick: loadMore }} />
           )
         ) : screen === 'watchlist' ? (
           <Watchlist items={watchlist} onOpen={openDetail} onRemove={toggleSave} />

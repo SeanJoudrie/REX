@@ -11,11 +11,13 @@ Checked items are done; unchecked are open with notes.
       token bucket keyed by IP._
 - [x] Service worker / offline app-shell + poster cache (#11)
 - [x] Deep-link + native share (#10)
-- [ ] **Client `/discover` response cache + in-flight dedup** — identical
-      (filter,sort,genre,page,pivot) queries should be memoized; back-and-forth
-      filtering currently re-hits the proxy.
-- [ ] **Server-cursor pagination** — "Fresh batch" uses a random page, not page
-      N+1; heavy users get shrinking/overlapping pools. Track a per-query cursor.
+- [x] **Client `/discover` response cache + in-flight dedup** — identical
+      queries memoized 5min + in-flight dedup (`tmdb.ts`).
+- [x] **Auto-pagination / deep candidate pool** — the pool now grows page-by-page
+      as the deck drains (page N+1 appended, deduped, `atEnd` latch), so the
+      candidate set is hundreds deep instead of one page. "Fresh batch" pulls the
+      next page; no more random-page overlap. _Next: a true per-query server
+      cursor (TMDB page numbers can still drift on popularity re-sorts)._
 - [ ] **Telemetry seam** — instrument deck→save→watched funnel, dwell-before-
       decision, proxy error rate. No analytics today.
 
@@ -81,6 +83,33 @@ Canonical key everywhere: `type:tmdb_id` (e.g. `person:5292`, `company:41077`).
       Don't mirror TMDB — `title_tags` is only for "why this," decks stay live.
       The same `rankDeck` v2 formula relocates into an Edge Function unchanged
       (score the ≤100 candidate batch, never a table scan).
+
+## Motion & desktop (Principal Motion Designer audit)
+- [x] **Dropdown white-out** — native `<select>` popups were white-on-white;
+      fixed with `color-scheme: dark` + explicit dark `<option>` surfaces.
+- [x] **Detail header image fallback** — gradient is now the base layer, so a
+      broken/missing poster (e.g. Arcane) shows the title's color signature
+      instead of a black void. (Watchlist/Watched thumbs already fell back.)
+- [x] **Provider-tier consolidation** — "Netflix Standard with Ads" → "Netflix",
+      "Amazon Prime Video" → "Prime Video", "Disney Plus" → "Disney+", etc.,
+      then dedup (`canonProvider`/`normalizeProviders` in `tmdb.ts`).
+- [ ] **3D card-flip Detail mechanic** — _deferred to a dedicated motion pass._
+      Tap a card → fast vanilla-CSS `rotateY` flip to a back face (synopsis +
+      metadata + small pinned poster), instead of the current slide-up sheet.
+      Constraint: pure CSS transform/transition + raw pointer math, NO Framer
+      Motion (deps stay react/react-dom only).
+- [ ] **Full transition refactor** — _explicit user note: "refactor this
+      transition entirely down the line."_ The open/close currently relies on a
+      DURATION constant kept in sync by hand between JS timers and CSS; rebuild on
+      a single source of truth (transitionend events / Web Animations).
+- [ ] **Bridge UI "teleports"** — add subtle transitions where the app jumps
+      instantly between states (tab switches, filter-row changes, empty↔deck).
+- [ ] **Full Watchlist/Watched tab parity** — both tabs have provider chips +
+      basic sorts, but not Discover's full genre/year/service control set. Bring
+      the same filter surface to the library tabs.
+- [ ] **Desktop "too wide" sort bars** — app is capped at 640px; on wide desktop
+      the filter row still reads wide relative to the 400px deck card. Needs a
+      design call on target column width (note kept; not yet changed).
 
 ## UX
 - [ ] **Graceful exit / "you're done" moment** (Principal UX Researcher thread —
