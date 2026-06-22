@@ -18,9 +18,10 @@ function watchUrl(t: Title): string {
 const tagColor = (type: string) =>
   type === 'person' ? 'rgba(56,189,248,0.5)' : type === 'company' ? 'rgba(246,194,68,0.5)' : type === 'keyword' ? 'rgba(255,255,255,0.18)' : 'rgba(34,197,94,0.5)'
 
-export default function Detail({ t, saved, onClose, onToggleSave, onPivot }: {
+export default function Detail({ t, saved, reason, onClose, onToggleSave, onPivot }: {
   t: Title
   saved: boolean
+  reason?: string | null
   onClose: () => void
   onToggleSave: (t: Title) => void
   onPivot: (tag: { type: string; id: number; name: string }) => void
@@ -164,6 +165,11 @@ export default function Detail({ t, saved, onClose, onToggleSave, onPivot }: {
         <div style={{ padding: '18px 20px 28px' }}>
           <div id={titleId} style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em' }}>{t.title}</div>
           <div style={{ marginTop: 5, fontSize: 13, opacity: 0.7 }}>{t.year} · {t.mediaType === 'tv' ? 'TV Series' : 'Film'} · ★ {t.rating.toFixed(1)} · {t.genres.join(', ')}</div>
+          {reason && (
+            <div style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, padding: '5px 10px', borderRadius: 999, background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#86efac' }}>
+              <Icon name="discover" size={13} /> {reason}
+            </div>
+          )}
           <p style={{ marginTop: 14, fontSize: 14.5, lineHeight: 1.6, opacity: 0.9 }}>{t.overview}</p>
 
           {/* Tappable taste tags — each pivots the deck to that entity */}

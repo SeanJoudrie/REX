@@ -1,5 +1,5 @@
 import type { Title, WatchedItem } from '../types'
-import type { TasteVec } from './taste'
+import type { TasteVec, EntityAff } from './taste'
 
 // Guest-mode persistence: everything lives on-device in localStorage so users
 // can swipe and build a watchlist with no account (per the UX spec). When
@@ -22,11 +22,16 @@ interface Persisted {
   dislikes: string[]
   /** Learned per-genre weights, updated by every swipe/rating. */
   taste: TasteVec
+  /** Learned per-entity weights (cast/director/studio/keyword), keyed type:id.
+   *  Fed by informed actions (opened/watched), surfaced in "why this" + tuning. */
+  affinity: EntityAff
+  /** Timestamp of the last EWMA decay pass (so taste drifts over time). */
+  tasteDecayedAt: number
   /** First-run tutorial shown? */
   onboarded: boolean
 }
 
-const EMPTY: Persisted = { watchlist: [], watched: [], seen: [], likes: [], dislikes: [], taste: {}, onboarded: false }
+const EMPTY: Persisted = { watchlist: [], watched: [], seen: [], likes: [], dislikes: [], taste: {}, affinity: {}, tasteDecayedAt: 0, onboarded: false }
 
 export function loadState(): Persisted {
   try {
