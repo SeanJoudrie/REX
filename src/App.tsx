@@ -9,6 +9,7 @@ import Watched from './components/Watched'
 import Detail from './components/Detail'
 import RatingSheet from './components/RatingSheet'
 import Onboarding from './components/Onboarding'
+import MatchMode from './components/MatchMode'
 import Icon from './components/Icon'
 import type { TasteVec } from './lib/taste'
 import { applySignal, bottomGenres, rankDeck, topGenres, LIKE_DELTA, PASS_DELTA, starDelta } from './lib/taste'
@@ -51,6 +52,7 @@ export default function App() {
   const [actorInput, setActorInput] = useState('')
   const [detail, setDetail] = useState<Title | null>(null)
   const [ratingFor, setRatingFor] = useState<Title | null>(null)
+  const [matchOpen, setMatchOpen] = useState(false)
 
   // Latest taste read inside load() via a ref, so learning doesn't trigger a
   // refetch on every swipe — it applies on the next deck (filter change / fresh
@@ -158,14 +160,20 @@ export default function App() {
           R<span style={{ color: '#22c55e' }}>E</span>X
         </div>
         {screen === 'deck' && (
-          <div role="group" aria-label="Filter by type" style={{ display: 'flex', gap: 6, background: 'rgba(255,255,255,0.06)', padding: 4, borderRadius: 999 }}>
-            {(['all', 'movie', 'tv'] as Filter[]).map(f => (
-              <button key={f} onClick={() => setFilter(f)} aria-pressed={filter === f}
-                style={{ fontSize: 12, fontWeight: 700, padding: '6px 12px', borderRadius: 999, cursor: 'pointer', border: 'none',
-                  background: filter === f ? '#fff' : 'transparent', color: filter === f ? '#0B0B12' : '#fff' }}>
-                {f === 'all' ? 'All' : f === 'movie' ? 'Film' : 'TV'}
-              </button>
-            ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={() => setMatchOpen(true)} aria-label="Watch together"
+              style={{ fontSize: 12, fontWeight: 800, padding: '6px 12px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.06)', color: '#fff' }}>
+              👥 Together
+            </button>
+            <div role="group" aria-label="Filter by type" style={{ display: 'flex', gap: 6, background: 'rgba(255,255,255,0.06)', padding: 4, borderRadius: 999 }}>
+              {(['all', 'movie', 'tv'] as Filter[]).map(f => (
+                <button key={f} onClick={() => setFilter(f)} aria-pressed={filter === f}
+                  style={{ fontSize: 12, fontWeight: 700, padding: '6px 12px', borderRadius: 999, cursor: 'pointer', border: 'none',
+                    background: filter === f ? '#fff' : 'transparent', color: filter === f ? '#0B0B12' : '#fff' }}>
+                  {f === 'all' ? 'All' : f === 'movie' ? 'Film' : 'TV'}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </header>
@@ -244,6 +252,7 @@ export default function App() {
       {detail && <Detail t={detail} saved={isSaved(detail)} onClose={() => setDetail(null)} onToggleSave={toggleSave} />}
       {ratingFor && <RatingSheet t={ratingFor} onRate={s => { rate(ratingFor, s); setRatingFor(null) }} onClose={() => setRatingFor(null)} />}
       {!onboarded && <Onboarding onDone={() => setOnboarded(true)} />}
+      {matchOpen && <MatchMode onClose={() => setMatchOpen(false)} />}
     </div>
   )
 }
