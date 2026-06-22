@@ -1,7 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { Title, WatchedItem } from '../types'
 import type { TasteVec, EntityAff } from '../lib/taste'
+import { encodeTaste } from '../lib/tasteShare'
 import Poster from './Poster'
 import Icon from './Icon'
 
@@ -13,16 +14,19 @@ type PivotTag = { type: string; id: number; name: string }
 
 const titleKey = (t: Title) => `${t.mediaType}-${t.id}`
 
-export default function Mirror({ taste, affinity, watched, watchlist, seenCount, onPivot, onStartMatch, onGoSwipe }: {
+export default function Mirror({ taste, affinity, watched, watchlist, seenCount, likes, dislikes, onPivot, onStartMatch, onGoSwipe }: {
   taste: TasteVec
   affinity: EntityAff
   watched: WatchedItem[]
   watchlist: Title[]
   seenCount: number
+  likes: string[]
+  dislikes: string[]
   onPivot: (tag: PivotTag) => void
   onStartMatch: () => void
   onGoSwipe: () => void
 }) {
+  const [copied, setCopied] = useState(false)
   const library = useMemo(() => [...watched, ...watchlist], [watched, watchlist])
 
   const entitiesByType = useMemo(() => {
@@ -70,23 +74,46 @@ export default function Mirror({ taste, affinity, watched, watchlist, seenCount,
 
   const tasteType = buildTasteType(vibes, studios, people, themes)
 
+  const url = `${location.origin}${location.pathname}`
+
+  // Render the fingerprint to a canvas → share as an image (the growth loop);
+  // fall back to text share / clipboard where files aren't supported.
   const shareMirror = async () => {
     const text = `My REX taste type: ${tasteType}`
-    const url = `${location.origin}${location.pathname}`
     try {
+      const blob = await renderShareImage(tasteType, people[0]?.label, vibes[0]?.name, studios[0]?.label)
+      const file = blob ? new File([blob], 'rex-taste.png', { type: 'image/png' }) : null
+      if (file && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], text })
+        return
+      }
+      if (blob) { triggerDownload(blob, 'rex-taste.png'); return }
       if (navigator.share) await navigator.share({ title: 'My REX taste', text, url })
       else await navigator.clipboard.writeText(`${text} — ${url}`)
     } catch { /* dismissed */ }
   }
 
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(encodeTaste({ v: 1, taste, likes, dislikes }))
+      setCopied(true); window.setTimeout(() => setCopied(false), 1800)
+    } catch { /* clipboard blocked */ }
+  }
+
   return (
     <div style={{ maxWidth: 520, width: '100%', minWidth: 0, margin: '0 auto', padding: '4px 16px 28px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '8px 2px 14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '8px 2px 14px' }}>
         <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em' }}>Your Mirror</div>
-        <button onClick={shareMirror} aria-label="Share my taste"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, padding: '7px 12px', borderRadius: 999, cursor: 'pointer', background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.16)' }}>
-          <Icon name="share" size={14} /> Share
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={copyCode} aria-label="Copy taste code for blending"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, padding: '7px 12px', borderRadius: 999, cursor: 'pointer', background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.16)' }}>
+            <Icon name="users" size={14} /> {copied ? 'Copied!' : 'Taste code'}
+          </button>
+          <button onClick={shareMirror} aria-label="Share my taste"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, padding: '7px 12px', borderRadius: 999, cursor: 'pointer', background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.16)' }}>
+            <Icon name="share" size={14} /> Share
+          </button>
+        </div>
       </div>
 
       {/* Fingerprint header */}
@@ -197,4 +224,68 @@ function buildTasteType(vibes: Vibe[], studios: Entity[], people: Entity[], them
   else if (v1) head = `${v1} devotee`
   else head = 'Eclectic viewer'
   return flavor ? `${head} with a soft spot for ${flavor}` : head
+}
+
+// ── Share image (vanilla canvas, no deps) ────────────────────────────────────
+function triggerDownload(blob: Blob, name: string) {
+  const u = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = u; a.download = name; a.click()
+  URL.revokeObjectURL(u)
+}
+
+function wrap(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lh: number) {
+  const words = text.split(' ')
+  let line = ''
+  for (const w of words) {
+    const test = line ? `${line} ${w}` : w
+    if (ctx.measureText(test).width > maxW && line) { ctx.fillText(line, x, y); line = w; y += lh }
+    else line = test
+  }
+  if (line) ctx.fillText(line, x, y)
+  return y
+}
+
+function renderShareImage(tasteType: string, person?: string, vibe?: string, studio?: string): Promise<Blob | null> {
+  const W = 1080, H = 1080
+  const c = document.createElement('canvas')
+  c.width = W; c.height = H
+  const ctx = c.getContext('2d')
+  if (!ctx) return Promise.resolve(null)
+
+  const g = ctx.createLinearGradient(0, 0, W, H)
+  g.addColorStop(0, '#0d2a1a'); g.addColorStop(1, '#0b0b12')
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+
+  ctx.fillStyle = '#fff'
+  ctx.font = '900 64px ui-sans-serif, system-ui, sans-serif'
+  ctx.fillText('R', 84, 150)
+  ctx.fillStyle = '#22c55e'; ctx.fillText('E', 84 + ctx.measureText('R').width, 150)
+  ctx.fillStyle = '#fff'; ctx.fillText('X', 84 + ctx.measureText('RE').width, 150)
+
+  ctx.fillStyle = 'rgba(255,255,255,0.55)'
+  ctx.font = '700 30px ui-sans-serif, system-ui, sans-serif'
+  ctx.fillText('MY TASTE TYPE', 84, 360)
+
+  ctx.fillStyle = '#fff'
+  ctx.font = '800 78px ui-sans-serif, system-ui, sans-serif'
+  const endY = wrap(ctx, tasteType, 84, 450, W - 168, 92)
+
+  const rows: [string, string][] = []
+  if (person) rows.push(['TOP PERSON', person])
+  if (vibe) rows.push(['TOP VIBE', vibe])
+  if (studio) rows.push(['TOP STUDIO', studio])
+  let y = Math.max(endY + 120, 760)
+  for (const [label, val] of rows) {
+    ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '700 26px ui-sans-serif, system-ui, sans-serif'
+    ctx.fillText(label, 84, y)
+    ctx.fillStyle = '#86efac'; ctx.font = '800 44px ui-sans-serif, system-ui, sans-serif'
+    ctx.fillText(val, 84, y + 48)
+    y += 116
+  }
+
+  ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '600 26px ui-sans-serif, system-ui, sans-serif'
+  ctx.fillText('made with REX · swipe to find what to watch', 84, H - 70)
+
+  return new Promise(res => c.toBlob(b => res(b), 'image/png'))
 }

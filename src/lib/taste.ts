@@ -69,6 +69,19 @@ export function topEntities(aff: EntityAff, minW = 0.18, minN = 2, limit = 12) {
   return Object.values(aff).filter(v => v.w >= minW && v.n >= minN).sort((a, b) => b.w - a.w).slice(0, limit)
 }
 
+/** Blend two taste vectors for a "what do WE watch" deck. Consensus-weighted:
+ *  mostly the min (rewards what BOTH like, punishes what either dislikes) with a
+ *  little average so neither person is erased. */
+export function mergeTaste(a: TasteVec, b: TasteVec): TasteVec {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+  const out: TasteVec = {}
+  for (const k of keys) {
+    const av = a[k]?.w ?? 0, bv = b[k]?.w ?? 0
+    out[k] = { w: clip(Math.min(av, bv) + 0.25 * ((av + bv) / 2)), n: (a[k]?.n ?? 0) + (b[k]?.n ?? 0) }
+  }
+  return out
+}
+
 export function applySignal(vec: TasteVec, genres: string[], delta: number): TasteVec {
   if (!genres.length || !delta) return vec
   const next: TasteVec = { ...vec }

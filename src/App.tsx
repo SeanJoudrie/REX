@@ -14,8 +14,11 @@ import RatingSheet from './components/RatingSheet'
 import Onboarding from './components/Onboarding'
 import Settings from './components/Settings'
 import Icon from './components/Icon'
+import Rex from './components/Rex'
+import { track } from './lib/metrics'
+import type { TastePayload } from './lib/tasteShare'
 import type { TasteVec, EntityAff } from './lib/taste'
-import { applySignal, applyEntities, bottomGenres, rankDeck, topGenres, decayTaste, decayAff, ENTITY_DELTAS, entityStarDelta, LIKE_DELTA, PASS_DELTA, starDelta } from './lib/taste'
+import { applySignal, applyEntities, bottomGenres, rankDeck, topGenres, decayTaste, decayAff, mergeTaste, ENTITY_DELTAS, entityStarDelta, LIKE_DELTA, PASS_DELTA, starDelta } from './lib/taste'
 
 type Screen = 'deck' | 'watchlist' | 'watched' | 'mirror'
 type Filter = 'all' | MediaType
@@ -86,6 +89,19 @@ export default function App() {
   // Title queued to open after Match closes — lets us pop Match's own history
   // entry (via Back) instead of orphaning it, then open the detail cleanly.
   const pendingMatchOpen = useRef<Title | null>(null)
+  const pendingBlend = useRef<TastePayload | null>(null)
+  // Blend mode: a friend's imported taste, merged into the deck ranking.
+  const [blend, setBlend] = useState<TastePayload | null>(null)
+  const blendRef = useRef<TastePayload | null>(null)
+  useEffect(() => { blendRef.current = blend }, [blend])
+  // "You're done" exit moment.
+  const sessionSaves = useRef(0)
+  const [doneNudge, setDoneNudge] = useState<Title | null>(null)
+  const doneTimer = useRef<number | null>(null)
+  // Logo-tap easter egg → Rexasaurus Rex roars.
+  const logoTaps = useRef(0)
+  const logoTimer = useRef<number | null>(null)
+  const [rexEgg, setRexEgg] = useState(false)
 
   // Latest taste read inside load() via a ref, so learning doesn't trigger a
   // refetch on every swipe — it applies on the next deck (filter change / fresh
@@ -93,13 +109,21 @@ export default function App() {
   const tasteRef = useRef(taste)
   useEffect(() => { tasteRef.current = taste }, [taste])
 
+  // Ranking vector: my taste, or a consensus blend with a friend's in blend mode.
+  const rankVec = () => {
+    const b = blendRef.current
+    return b ? mergeTaste(tasteRef.current, b.taste) : tasteRef.current
+  }
+
   // Build the discover query for a given page off the current filters + taste.
   const buildQuery = useCallback((p: number): DeckQuery => {
     const v = tasteRef.current
     const mediaTypes: MediaType[] = filter === 'all' ? ['movie', 'tv'] : [filter]
     const tasteGenres = likes.filter(g => g !== 'New Releases')
-    const withGenres = Array.from(new Set([...tasteGenres, ...topGenres(v)]))
-    const withoutGenres = Array.from(new Set([...dislikes, ...bottomGenres(v)]))
+    const blendLikes = blend ? [...blend.likes.filter(g => g !== 'New Releases'), ...topGenres(blend.taste)] : []
+    const blendDislikes = blend ? [...blend.dislikes, ...bottomGenres(blend.taste)] : []
+    const withGenres = Array.from(new Set([...tasteGenres, ...topGenres(v), ...blendLikes]))
+    const withoutGenres = Array.from(new Set([...dislikes, ...bottomGenres(v), ...blendDislikes]))
     const effSort = sort === 'popular' && likes.includes('New Releases') ? 'new' : sort
     return {
       mediaTypes,
@@ -113,7 +137,7 @@ export default function App() {
       withoutGenres: withoutGenres.length ? withoutGenres : undefined,
       page: p,
     }
-  }, [filter, genre, year, sort, service, actor, likes, dislikes, pivot])
+  }, [filter, genre, year, sort, service, actor, likes, dislikes, pivot, blend])
 
   // Fresh load (filters/taste changed): reset paging and replace the pool.
   const load = useCallback(() => {
@@ -122,7 +146,7 @@ export default function App() {
     pageRef.current = 1
     const ctrl = new AbortController()
     fetchDeck(buildQuery(1), ctrl.signal)
-      .then(d => { setPool(rankDeck(d, tasteRef.current)); setStatus('ready') })
+      .then(d => { setPool(rankDeck(d, rankVec())); setStatus('ready') })
       .catch((e: unknown) => { if ((e as Error)?.name !== 'AbortError') setStatus('error') })
     return () => ctrl.abort()
   }, [buildQuery])
@@ -140,7 +164,7 @@ export default function App() {
         const fresh = d.filter(t => !have.has(keyOf(t)))
         if (!fresh.length) { setAtEnd(true); return }
         pageRef.current = next
-        setPool(prev => [...prev, ...rankDeck(fresh, tasteRef.current)])
+        setPool(prev => [...prev, ...rankDeck(fresh, rankVec())])
       })
       .catch(() => { /* keep the current pool; the manual Fresh batch can retry */ })
       .finally(() => { loadingMore.current = false })
@@ -199,6 +223,17 @@ export default function App() {
     undoTimer.current = window.setTimeout(() => setUndo(null), 4500)
   }
 
+  // The anti-doomscroll moment: once the user has a good-enough pick, offer a
+  // calm "you've got something for tonight" off-ramp (first save, then sparingly)
+  // instead of an endless deck.
+  const maybeDoneNudge = (t: Title) => {
+    sessionSaves.current += 1
+    if (blend || (sessionSaves.current !== 1 && sessionSaves.current % 5 !== 0)) return
+    setDoneNudge(t)
+    if (doneTimer.current) window.clearTimeout(doneTimer.current)
+    doneTimer.current = window.setTimeout(() => setDoneNudge(null), 7000)
+  }
+
   const like = (t: Title) => {
     const k = keyOf(t); markSeen(k)
     setWatchlist(w => (w.some(x => keyOf(x) === k) ? w : [...w, t]))
@@ -206,7 +241,9 @@ export default function App() {
     const gd = LIKE_DELTA * (tags ? 1.25 : 1) // informed > impulse
     setTaste(v => applySignal(v, t.genres, gd))
     if (tags) setAffinity(a => applyEntities(a, tags, ENTITY_DELTAS.likeInformed))
+    track('like'); track('save')
     showUndo(t, 'like', gd)
+    maybeDoneNudge(t)
   }
   const pass = (t: Title) => {
     const k = keyOf(t); markSeen(k)
@@ -214,6 +251,7 @@ export default function App() {
     const gd = PASS_DELTA * (tags ? 2 : 1) // informed pass = genuine "not for me"
     setTaste(v => applySignal(v, t.genres, gd))
     if (tags) setAffinity(a => applyEntities(a, tags, ENTITY_DELTAS.passInformed))
+    track('pass')
     showUndo(t, 'pass', gd)
   }
 
@@ -223,6 +261,7 @@ export default function App() {
     setWatchlist(w => w.filter(x => keyOf(x) !== k))
     setWatched(list => (list.some(x => keyOf(x) === k) ? list : [...list, { ...t, stars: 0 }]))
     setRatingFor(t)
+    track('watched')
     showUndo(t, 'watched', 0)
   }
 
@@ -246,6 +285,7 @@ export default function App() {
     setWatched(list => list.map(x => (keyOf(x) === k ? { ...x, stars } : x)))
     const contr = (s: number) => (s ? starDelta(s) : 0) // unrated counts as neutral
     const d = contr(stars) - contr(prev)
+    track('rate')
     if (d) setTaste(v => applySignal(v, t.genres, d)) // stars push hardest
     // Entity affinity from the rating (the heaviest signal) — use cached tags or
     // fetch them once.
@@ -263,12 +303,17 @@ export default function App() {
 
   const toggleSave = (t: Title) => {
     const k = keyOf(t)
-    setWatchlist(w => (w.some(x => keyOf(x) === k) ? w.filter(x => keyOf(x) !== k) : [...w, t]))
+    setWatchlist(w => {
+      const had = w.some(x => keyOf(x) === k)
+      if (!had) track('save')
+      return had ? w.filter(x => keyOf(x) !== k) : [...w, t]
+    })
     markSeen(k)
   }
 
   // Open detail immediately, then hydrate tags/poster from the proxy.
   const openDetail = (t: Title) => {
+    track('open')
     setDetail(t)
     if (USING_SAMPLE) return
     fetchTitleById(t.mediaType, t.id).then(full => {
@@ -282,7 +327,21 @@ export default function App() {
   const deckFromTag = (tag: { type: string; id: number; name: string }) => {
     setDetail(null)
     setScreen('deck')
+    track('pivot')
     setPivot({ type: tag.type, id: tag.id, name: tag.name, label: tag.name })
+  }
+
+  // Logo-tap easter egg: 5 quick taps → Rexasaurus Rex roars.
+  const tapLogo = () => {
+    logoTaps.current += 1
+    if (logoTimer.current) window.clearTimeout(logoTimer.current)
+    logoTimer.current = window.setTimeout(() => { logoTaps.current = 0 }, 1200)
+    if (logoTaps.current >= 5) {
+      logoTaps.current = 0
+      setRexEgg(true)
+      if (navigator.vibrate) navigator.vibrate([10, 40, 10, 40, 20])
+      window.setTimeout(() => setRexEgg(false), 2600)
+    }
   }
 
   // "Why this?" — the overlap of the title with the user's learned taste.
@@ -316,9 +375,10 @@ export default function App() {
       {/* Top bar */}
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(14px, env(safe-area-inset-top)) 18px 6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ fontWeight: 900, fontSize: 22, letterSpacing: '0.14em' }}>
+          <button onClick={tapLogo} aria-label="REX"
+            style={{ fontWeight: 900, fontSize: 22, letterSpacing: '0.14em', background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
             R<span style={{ color: '#22c55e' }}>E</span>X
-          </div>
+          </button>
           <button onClick={() => setSettingsOpen(true)} aria-label="Settings"
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 999, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.55)', cursor: 'pointer' }}>
             <Icon name="gear" size={18} />
@@ -373,6 +433,19 @@ export default function App() {
         </div>
       )}
 
+      {/* Blend-mode banner — "what do WE watch" deck */}
+      {screen === 'deck' && blend && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '0 16px 6px', padding: '8px 12px', borderRadius: 12, background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.35)' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <Icon name="users" size={15} /> Blending with <span style={{ color: '#7dd3fc' }}>{blend.name || 'a friend'}</span>
+          </span>
+          <button onClick={() => setBlend(null)} aria-label="Clear blend"
+            style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.18)' }}>
+            Clear <Icon name="x" size={13} />
+          </button>
+        </div>
+      )}
+
       {/* Active entity-pivot banner */}
       {screen === 'deck' && pivot && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '0 16px 6px', padding: '8px 12px', borderRadius: 12, background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.35)' }}>
@@ -394,17 +467,17 @@ export default function App() {
       )}
 
       {/* Main */}
-      <main style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: screen === 'deck' ? 'hidden' : 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: screen === 'deck' ? 'center' : 'flex-start', padding: screen === 'deck' ? '6px 16px' : 0 }}>
+      <main key={screen} className="rex-fade" style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: screen === 'deck' ? 'hidden' : 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: screen === 'deck' ? 'center' : 'flex-start', padding: screen === 'deck' ? '6px 16px' : 0 }}>
         {screen === 'deck' ? (
           status === 'loading' ? (
-            <Centered icon={<Icon name="film" size={40} />} title="Loading titles…" />
+            <Centered icon={<Rex mood="idle" size={92} />} title="Rex is sniffing out picks…" />
           ) : status === 'error' ? (
             <Centered icon={<Icon name="warning" size={40} />} title="Couldn't load the deck" sub="Check your connection and try again." action={{ label: 'Retry', onClick: load }} />
           ) : deck.length > 0 ? (
             <SwipeDeck deck={deck} onLike={like} onPass={pass} onWatched={markWatched} onOpenDetail={openDetail} />
           ) : (
-            <Centered icon={<Icon name="film" size={40} />}
-              title={atEnd ? "You've seen it all" : "That's the deck for now"}
+            <Centered icon={<Rex mood="shrug" size={92} />}
+              title={atEnd ? "Rex is all out of fresh meat" : "That's the deck for now"}
               sub={atEnd
                 ? `${filtersActive ? 'Try different filters up top to find more.' : 'Adjust your taste or check back later for new titles.'}`
                 : `${filtersActive ? 'Try different filters up top, or ' : ''}get a fresh batch.`}
@@ -417,6 +490,7 @@ export default function App() {
             likes={likes} dislikes={dislikes} onTaste={toggleTaste} onResetTaste={resetTaste} />
         ) : (
           <Mirror taste={taste} affinity={affinity} watched={watched} watchlist={watchlist} seenCount={seen.length}
+            likes={likes} dislikes={dislikes}
             onPivot={deckFromTag} onStartMatch={() => setMatchOpen(true)} onGoSwipe={() => setScreen('deck')} />
         )}
       </main>
@@ -429,12 +503,44 @@ export default function App() {
         <NavBtn active={screen === 'mirror'} onClick={() => setScreen('mirror')} label="Mirror" icon="sparkle" />
       </nav>
 
-      {screen === 'deck' && undo && (
+      {screen === 'deck' && undo && !doneNudge && (
         <button onClick={doUndo} aria-label={`Undo ${undo.action}`}
           style={{ position: 'fixed', bottom: 84, left: '50%', transform: 'translateX(-50%)', zIndex: 40, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 999, cursor: 'pointer',
             background: 'rgba(22,22,32,0.96)', color: '#fff', border: '1px solid rgba(255,255,255,0.22)', fontSize: 13.5, fontWeight: 700, boxShadow: '0 8px 24px -8px rgba(0,0,0,0.7)' }}>
           <Icon name="undo" size={16} /> Undo {undo.action === 'like' ? 'save' : undo.action === 'watched' ? 'watched' : 'pass'}
         </button>
+      )}
+
+      {/* "You're done" exit moment — REX's promise is pick-and-go, not endless swiping. */}
+      {screen === 'deck' && doneNudge && (
+        <div className="rex-fade" role="status"
+          style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 41, width: 'min(420px, calc(100% - 32px))',
+            display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 16,
+            background: 'rgba(22,22,32,0.98)', border: '1px solid rgba(34,197,94,0.4)', boxShadow: '0 12px 32px -10px rgba(0,0,0,0.8)' }}>
+          <Rex mood="happy" size={44} style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 800 }}>You've got something for tonight</div>
+            <div style={{ fontSize: 12, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doneNudge.title} is on your watchlist.</div>
+          </div>
+          <button onClick={() => { const t = doneNudge; setDoneNudge(null); if (t) openDetail(t) }}
+            style={{ flexShrink: 0, fontSize: 12.5, fontWeight: 800, padding: '8px 12px', borderRadius: 10, cursor: 'pointer', background: '#22c55e', color: '#06210f', border: 'none' }}>
+            Watch it
+          </button>
+          <button onClick={() => setDoneNudge(null)} aria-label="Keep swiping"
+            style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 999, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.6)' }}>
+            <Icon name="x" size={15} />
+          </button>
+        </div>
+      )}
+
+      {/* Easter egg */}
+      {rexEgg && (
+        <div className="rex-fade" onClick={() => setRexEgg(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, background: 'rgba(11,11,18,0.82)', backdropFilter: 'blur(3px)' }}>
+          <Rex mood="roar" size={180} />
+          <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: '0.04em' }}>RAWR. You found me.</div>
+          <div style={{ fontSize: 13, opacity: 0.7 }}>— Rexasaurus Rex 🦖</div>
+        </div>
       )}
 
       {USING_SAMPLE && (
@@ -450,11 +556,13 @@ export default function App() {
       {matchOpen && <MatchMode deck={deck}
         onClose={() => {
           setMatchOpen(false)
-          const t = pendingMatchOpen.current
-          pendingMatchOpen.current = null
+          const t = pendingMatchOpen.current; pendingMatchOpen.current = null
+          const b = pendingBlend.current; pendingBlend.current = null
           if (t) setTimeout(() => openDetail(t), 0)
+          if (b) { setBlend(b); setScreen('deck'); setPivot(null); if (navigator.vibrate) navigator.vibrate(16) }
         }}
-        onOpenTitle={t => { pendingMatchOpen.current = t; window.history.back() }} />}
+        onOpenTitle={t => { pendingMatchOpen.current = t; window.history.back() }}
+        onBlend={p => { pendingBlend.current = p; window.history.back() }} />}
     </div>
   )
 }

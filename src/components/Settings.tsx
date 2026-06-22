@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { exportRaw, importRaw } from '../lib/storage'
 import { cloudSave, cloudRestore, CLOUD_ENABLED } from '../lib/backup'
+import { insights, resetMetrics } from '../lib/metrics'
 import Icon from './Icon'
+
+const pct = (n: number) => `${Math.round(n * 100)}%`
 
 function download(name: string, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
@@ -23,6 +26,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   const [code, setCode] = useState<string | null>(null)
   const [restoreCode, setRestoreCode] = useState('')
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const [ins, setIns] = useState(() => insights())
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); onClose() } }
@@ -66,6 +70,23 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           Your watchlist, ratings, and learned taste live on this device only. Back them up so you don’t lose them if your browser clears data.
         </div>
 
+        {/* Your activity — local-only funnel, so you can see if the recs land */}
+        {ins.swipes > 0 && (
+          <>
+            <div style={{ fontSize: 11.5, fontWeight: 700, opacity: 0.55, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Your activity (private, on this device)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+              <Stat label="Swipes" value={`${ins.swipes}`} />
+              <Stat label="Save rate" value={pct(ins.saveRate)} />
+              <Stat label="Watched" value={`${ins.watched}`} />
+              <Stat label="Opened" value={`${ins.opens}`} />
+              <Stat label="Rated" value={`${ins.rates}`} />
+              <Stat label="Matches" value={`${ins.matches}`} />
+            </div>
+            <button onClick={() => { resetMetrics(); setIns(insights()) }}
+              style={{ ...btn(), marginBottom: 18, fontSize: 12.5, padding: '9px' }}>Clear activity stats</button>
+          </>
+        )}
+
         {/* On-device file backup */}
         <div style={{ fontSize: 11.5, fontWeight: 700, opacity: 0.55, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Backup file</div>
         <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
@@ -99,6 +120,15 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           <div style={{ marginTop: 14, fontSize: 12.5, fontWeight: 600, color: msg.kind === 'ok' ? '#86efac' : '#fca5a5' }}>{msg.text}</div>
         )}
       </div>
+    </div>
+  )
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '10px 8px', textAlign: 'center' }}>
+      <div style={{ fontSize: 19, fontWeight: 800 }}>{value}</div>
+      <div style={{ fontSize: 10.5, opacity: 0.6, fontWeight: 700, marginTop: 2 }}>{label}</div>
     </div>
   )
 }

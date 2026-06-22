@@ -4,6 +4,9 @@ import type { Title } from '../types'
 import SwipeDeck from './SwipeDeck'
 import Poster from './Poster'
 import Icon from './Icon'
+import { track } from '../lib/metrics'
+import { decodeTaste } from '../lib/tasteShare'
+import type { TastePayload } from '../lib/tasteShare'
 
 const MAX_CARDS = 12 // a quick round, not a marathon
 const titleKey = (t: Title) => `${t.mediaType}-${t.id}`
@@ -12,16 +15,20 @@ type Stage = 'setup' | 'handoff' | 'swipe' | 'results'
 
 /** Pass-the-phone match: 2–4 players swipe the SAME snapshotted deck in turn;
  *  a title everyone swiped right on is a match. Fully ephemeral — nothing is
- *  persisted or sent anywhere. */
-export default function MatchMode({ deck, onClose, onOpenTitle }: {
+ *  persisted or sent anywhere. onBlend hands a friend's pasted taste up so the
+ *  main deck can re-rank for both of you (Mode B). */
+export default function MatchMode({ deck, onClose, onOpenTitle, onBlend }: {
   deck: Title[]
   onClose: () => void
   onOpenTitle: (t: Title) => void
+  onBlend: (p: TastePayload) => void
 }) {
   const [stage, setStage] = useState<Stage>('setup')
   const [count, setCount] = useState(2)
   const [cur, setCur] = useState(0)
   const [idx, setIdx] = useState(0)
+  const [code, setCode] = useState('')
+  const [codeErr, setCodeErr] = useState(false)
 
   const gameDeck = useRef<Title[]>([])
   const likes = useRef<string[][]>([]) // likes[player] = [titleKey, …]
@@ -51,6 +58,20 @@ export default function MatchMode({ deck, onClose, onOpenTitle }: {
       else setStage('results')
     }
   }, [idx, stage, cur])
+
+  // Count a completed round + its matches (local metrics only).
+  useEffect(() => {
+    if (stage !== 'results') return
+    track('match_round')
+    track('match_match', matches().length)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage])
+
+  const tryBlend = () => {
+    const p = decodeTaste(code)
+    if (!p) { setCodeErr(true); return }
+    onBlend(p)
+  }
 
   const record = (t: Title, liked: boolean) => {
     if (liked) likes.current[cur].push(titleKey(t))
@@ -95,6 +116,21 @@ export default function MatchMode({ deck, onClose, onOpenTitle }: {
             <button onClick={start} disabled={deck.length === 0}
               style={{ marginTop: 26, width: '100%', padding: '14px', borderRadius: 14, fontSize: 15, fontWeight: 800, cursor: deck.length ? 'pointer' : 'default', background: deck.length ? '#22c55e' : 'rgba(255,255,255,0.1)', color: deck.length ? '#06210f' : '#fff', border: 'none' }}>
               {deck.length ? 'Start matching' : 'No titles to match — swipe a deck first'}
+            </button>
+
+            {/* Mode B — blend a remote friend's taste into your deck */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '22px 0 14px', opacity: 0.5, fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.14)' }} /> or apart <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.14)' }} />
+            </div>
+            <div style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.5, marginBottom: 10 }}>
+              Paste a friend's taste code (they copy it from their Mirror) to browse a deck ranked for <strong style={{ color: '#fff' }}>both</strong> of you.
+            </div>
+            <textarea value={code} onChange={e => { setCode(e.target.value); setCodeErr(false) }} placeholder="REX1:…" rows={2}
+              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', fontSize: 12.5, fontFamily: 'ui-monospace, monospace', padding: '10px 12px', borderRadius: 12, outline: 'none', background: 'rgba(255,255,255,0.06)', color: '#fff', border: `1px solid ${codeErr ? '#ef4444' : 'rgba(255,255,255,0.16)'}` }} />
+            {codeErr && <div style={{ marginTop: 6, fontSize: 12, color: '#fca5a5', fontWeight: 600 }}>That doesn't look like a valid taste code.</div>}
+            <button onClick={tryBlend} disabled={!code.trim()}
+              style={{ marginTop: 10, width: '100%', padding: '12px', borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: code.trim() ? 'pointer' : 'default', background: 'rgba(56,189,248,0.16)', color: '#7dd3fc', border: '1px solid rgba(56,189,248,0.4)' }}>
+              Blend our taste
             </button>
           </div>
         )}

@@ -18,8 +18,11 @@ Checked items are done; unchecked are open with notes.
       candidate set is hundreds deep instead of one page. "Fresh batch" pulls the
       next page; no more random-page overlap. _Next: a true per-query server
       cursor (TMDB page numbers can still drift on popularity re-sorts)._
-- [ ] **Telemetry seam** — instrument deck→save→watched funnel, dwell-before-
-      decision, proxy error rate. No analytics today.
+- [x] **Telemetry seam (local-first)** — `lib/metrics.ts` tracks the
+      deck→open→save→watched→rate funnel + match rounds, all on-device (never
+      sent). Surfaced as an "Your activity" panel in Settings (swipes, save rate,
+      watched, opened, rated, matches). _Next: dwell-before-decision + proxy
+      error rate; optional opt-in cloud aggregate when accounts land._
 
 ## Micro-features
 - [x] Undo last swipe (#8)
@@ -74,14 +77,18 @@ Canonical key everywhere: `type:tmdb_id` (e.g. `person:5292`, `company:41077`).
       chip tappable → pivot deck, bedrock "films that define you" shelf, and a
       low-confidence "swipe N more" gate. All on-device, no fetch. (`Mirror.tsx`)
       - [ ] **v2:** long-press a chip → tune (more/less/mute) writing affinities.
-      - [ ] **v3:** render fingerprint to a `<canvas>` share image; shareable
-        read-only Mirror deep link (backup-style snapshot). v1 ships a text share.
+      - [x] **v3 (share image):** fingerprint rendered to a `<canvas>` and shared
+        as a PNG (`navigator.share` files, else download). Plus a copyable
+        **taste code** (`lib/tasteShare.ts`) that powers remote blending.
+        _Still open: shareable read-only Mirror deep link._
+      - [ ] **v2 (tune):** long-press a chip → more/less/mute writing affinities.
 - [x] **Match Mode A — pass-the-phone** — 2–4 players swipe one snapshotted deck
       in turn (history-trapped overlay, blind handoff screens), intersection of
       right-swipes = matches, results sheet → open any match. Ephemeral, zero
       infra. (`MatchMode.tsx`, launched from the Mirror)
-      - [ ] **Mode B — blended deck:** import a friend's taste (reuse
-        export/import), merge vectors (`min(A,B)` consensus), rank a shared deck.
+      - [x] **Mode B — blended deck:** paste a friend's taste code in Match
+        setup → `mergeTaste` consensus (`min(A,B)` + a little avg) re-ranks the
+        main deck for both of you, with a "Blending with…" banner. Zero infra.
       - [ ] **Mode C — remote realtime:** `match_sessions` table (backup-style
         code), both phones pull one deck snapshot, ~2s poll for live intersection.
 - [ ] **Taste-recipe builder** — boolean tag stacking (A24 + Horror − Found-Footage)
@@ -123,11 +130,20 @@ Canonical key everywhere: `type:tmdb_id` (e.g. `person:5292`, `company:41077`).
       the filter row still reads wide relative to the 400px deck card. Needs a
       design call on target column width (note kept; not yet changed).
 
+## Brand / motion
+- [x] **Rexasaurus Rex (pixel mascot)** — vanilla-SVG pixel-art dino (`Rex.tsx`),
+      moods (idle bob / shrug / happy / roar) via CSS keyframes. Lives in the
+      loading + empty-deck states, the "you're done" nudge, and a logo-tap (×5)
+      easter egg. Calm cross-fade added on tab switches.
+- [ ] Full motion refactor (3D card-flip detail + single-source transition
+      timing) — still deferred to a dedicated pass.
+
 ## UX
-- [ ] **Graceful exit / "you're done" moment** (Principal UX Researcher thread —
-      _spec was cut off mid-message; capturing the thesis so it isn't lost_):
-      REX's promise is "pick something in ~3 minutes, then go watch it" — NOT
-      farm endless swiping. So the *exit* is the product: detect when the user
-      has a good-enough pick (e.g. first save, or N saves) and offer a calm
-      "you've got something to watch tonight → [open it]" off-ramp instead of an
-      infinite deck. _Await the rest of this spec._
+- [x] **Graceful exit / "you're done" moment** — after a save (first of a
+      session, then every 5th), a calm "you've got something for tonight →
+      Watch it" card offers an off-ramp instead of an infinite deck. Suppressed
+      in blend mode.
+- [ ] _Tuning to refine: cadence/copy once we see real save patterns in metrics._
+      Origin thesis (Principal UX Researcher): REX's promise is "pick something in
+      ~3 minutes, then go watch it" — not farm endless swiping; the *exit* is the
+      product.

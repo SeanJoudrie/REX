@@ -24,3 +24,17 @@ body {
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
+
+/* Rexasaurus Rex — pixel mascot motion. */
+@keyframes rex-bob { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-7%) } }
+@keyframes rex-roar { 0% { transform: scale(1) } 25% { transform: scale(1.14) rotate(-3deg) } 55% { transform: scale(1.04) rotate(3deg) } 100% { transform: scale(1) } }
+.rex-bob { animation: rex-bob 1.9s ease-in-out infinite; transform-origin: center bottom; }
+.rex-roar { animation: rex-roar 0.55s ease-out; transform-origin: center bottom; }
+
+/* Calm cross-fade when switching primary screens. */
+@keyframes rex-fade { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+.rex-fade { animation: rex-fade 0.22s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rex-bob, .rex-roar, .rex-fade { animation: none; }
+}
