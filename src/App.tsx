@@ -51,6 +51,8 @@ export default function App() {
   const [actorInput, setActorInput] = useState('')
   const [detail, setDetail] = useState<Title | null>(null)
   const [ratingFor, setRatingFor] = useState<Title | null>(null)
+  const [undo, setUndo] = useState<{ card: Title; action: 'like' | 'pass' | 'watched'; delta: number } | null>(null)
+  const undoTimer = useRef<number | null>(null)
 
   // Latest taste read inside load() via a ref, so learning doesn't trigger a
   // refetch on every swipe — it applies on the next deck (filter change / fresh
@@ -103,14 +105,22 @@ export default function App() {
 
   const markSeen = (k: string) => setSeen(s => (s.includes(k) ? s : [...s, k]))
 
+  const showUndo = (card: Title, action: 'like' | 'pass' | 'watched', delta: number) => {
+    setUndo({ card, action, delta })
+    if (undoTimer.current) window.clearTimeout(undoTimer.current)
+    undoTimer.current = window.setTimeout(() => setUndo(null), 4500)
+  }
+
   const like = (t: Title) => {
     const k = keyOf(t); markSeen(k)
     setWatchlist(w => (w.some(x => keyOf(x) === k) ? w : [...w, t]))
     setTaste(v => applySignal(v, t.genres, LIKE_DELTA)) // amplify these genres
+    showUndo(t, 'like', LIKE_DELTA)
   }
   const pass = (t: Title) => {
     markSeen(keyOf(t))
     setTaste(v => applySignal(v, t.genres, PASS_DELTA)) // gently suppress
+    showUndo(t, 'pass', PASS_DELTA)
   }
 
   const markWatched = (t: Title) => {
@@ -119,6 +129,22 @@ export default function App() {
     setWatchlist(w => w.filter(x => keyOf(x) !== k))
     setWatched(list => (list.some(x => keyOf(x) === k) ? list : [...list, { ...t, stars: 0 }]))
     setRatingFor(t)
+    showUndo(t, 'watched', 0)
+  }
+
+  // Reverse the last swipe: undo the list change, the seen key, the taste delta,
+  // and re-top the card so it returns to the deck.
+  const doUndo = () => {
+    if (!undo) return
+    const { card, action, delta } = undo
+    const k = keyOf(card)
+    setSeen(s => s.filter(x => x !== k))
+    if (action === 'like') setWatchlist(w => w.filter(x => keyOf(x) !== k))
+    if (action === 'watched') { setWatched(list => list.filter(x => keyOf(x) !== k)); setRatingFor(r => (r && keyOf(r) === k ? null : r)) }
+    if (delta) setTaste(v => applySignal(v, card.genres, -delta))
+    setPool(p => [card, ...p.filter(x => keyOf(x) !== k)])
+    if (undoTimer.current) window.clearTimeout(undoTimer.current)
+    setUndo(null)
   }
   const rate = (t: Title, stars: number) => {
     const k = keyOf(t)
@@ -234,6 +260,14 @@ export default function App() {
         <NavBtn active={screen === 'watchlist'} onClick={() => setScreen('watchlist')} label="Watchlist" icon="bookmark" badge={watchlist.length} />
         <NavBtn active={screen === 'watched'} onClick={() => setScreen('watched')} label="Watched" icon="eye" badge={watched.length} />
       </nav>
+
+      {screen === 'deck' && undo && (
+        <button onClick={doUndo} aria-label={`Undo ${undo.action}`}
+          style={{ position: 'fixed', bottom: 84, left: '50%', transform: 'translateX(-50%)', zIndex: 40, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 999, cursor: 'pointer',
+            background: 'rgba(22,22,32,0.96)', color: '#fff', border: '1px solid rgba(255,255,255,0.22)', fontSize: 13.5, fontWeight: 700, boxShadow: '0 8px 24px -8px rgba(0,0,0,0.7)' }}>
+          <Icon name="undo" size={16} /> Undo {undo.action === 'like' ? 'save' : undo.action === 'watched' ? 'watched' : 'pass'}
+        </button>
+      )}
 
       {USING_SAMPLE && (
         <div style={{ position: 'fixed', bottom: 70, left: 0, right: 0, textAlign: 'center', fontSize: 10.5, opacity: 0.4, pointerEvents: 'none' }}>

@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react'
 
 type Name =
   | 'discover' | 'bookmark' | 'eye' | 'info' | 'x' | 'check' | 'ticket'
-  | 'search' | 'sliders' | 'film' | 'warning' | 'star' | 'list' | 'grid'
+  | 'search' | 'sliders' | 'film' | 'warning' | 'star' | 'list' | 'grid' | 'undo'
 
 const PATHS: Record<Name, string> = {
   // lucide-style 24x24 paths
@@ -20,6 +20,7 @@ const PATHS: Record<Name, string> = {
   star: 'M12 2 15.09 8.26 22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01z',
   list: 'M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01',
   grid: 'M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z',
+  undo: 'M9 14 4 9l5-5 M4 9h11a5 5 0 0 1 0 10h-1',
 }
 
 export default function Icon({ name, size = 20, fill = false, style }: {
