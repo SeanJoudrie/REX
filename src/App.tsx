@@ -553,7 +553,7 @@ export default function App() {
       {ratingFor && <RatingSheet t={ratingFor} onRate={s => { rate(ratingFor, s); setRatingFor(null) }} onClose={() => setRatingFor(null)} />}
       {!onboarded && <Onboarding onDone={() => setOnboarded(true)} />}
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
-      {matchOpen && <MatchMode deck={deck}
+      {matchOpen && <MatchMode deck={deck} myTaste={taste}
         onClose={() => {
           setMatchOpen(false)
           const t = pendingMatchOpen.current; pendingMatchOpen.current = null

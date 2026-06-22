@@ -7,22 +7,26 @@ import Icon from './Icon'
 import { track } from '../lib/metrics'
 import { decodeTaste } from '../lib/tasteShare'
 import type { TastePayload } from '../lib/tasteShare'
+import type { TasteVec } from '../lib/taste'
+import RemoteMatch from './RemoteMatch'
 
 const MAX_CARDS = 12 // a quick round, not a marathon
 const titleKey = (t: Title) => `${t.mediaType}-${t.id}`
 
 type Stage = 'setup' | 'handoff' | 'swipe' | 'results'
+type Mode = 'choose' | 'local' | 'remote'
 
-/** Pass-the-phone match: 2–4 players swipe the SAME snapshotted deck in turn;
- *  a title everyone swiped right on is a match. Fully ephemeral — nothing is
- *  persisted or sent anywhere. onBlend hands a friend's pasted taste up so the
- *  main deck can re-rank for both of you (Mode B). */
-export default function MatchMode({ deck, onClose, onOpenTitle, onBlend }: {
+/** Match hub. Two ways to play: same-phone pass-and-swipe (Mode A, below) or
+ *  two-phone remote real-time (RemoteMatch). onBlend hands a friend's pasted
+ *  taste up so the main deck can re-rank for both of you (Mode B). */
+export default function MatchMode({ deck, myTaste, onClose, onOpenTitle, onBlend }: {
   deck: Title[]
+  myTaste: TasteVec
   onClose: () => void
   onOpenTitle: (t: Title) => void
   onBlend: (p: TastePayload) => void
 }) {
+  const [mode, setMode] = useState<Mode>('choose')
   const [stage, setStage] = useState<Stage>('setup')
   const [count, setCount] = useState(2)
   const [cur, setCur] = useState(0)
@@ -98,7 +102,29 @@ export default function MatchMode({ deck, onClose, onOpenTitle, onBlend }: {
       </header>
 
       <main style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '8px 18px 22px' }}>
-        {stage === 'setup' && (
+        {mode === 'choose' && (
+          <div style={{ textAlign: 'center', maxWidth: 360, margin: '0 auto', width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14, color: '#7dd3fc' }}><Icon name="users" size={40} /></div>
+            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em' }}>What do you both watch?</div>
+            <div style={{ marginTop: 8, fontSize: 14, opacity: 0.7, lineHeight: 1.5, marginBottom: 22 }}>Pick someone to match with — together on this phone, or on two phones anywhere.</div>
+            <button onClick={() => setMode('remote')}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', padding: '15px 16px', borderRadius: 16, cursor: 'pointer', background: 'rgba(56,189,248,0.14)', color: '#fff', border: '1px solid rgba(56,189,248,0.4)', marginBottom: 10 }}>
+              <Icon name="users" size={22} />
+              <span><span style={{ fontWeight: 800, display: 'block' }}>Two phones</span><span style={{ fontSize: 12.5, opacity: 0.7 }}>Connect by code · live "It's a Match!"</span></span>
+            </button>
+            <button onClick={() => setMode('local')}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', padding: '15px 16px', borderRadius: 16, cursor: 'pointer', background: 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.16)' }}>
+              <Icon name="share" size={22} />
+              <span><span style={{ fontWeight: 800, display: 'block' }}>Same phone</span><span style={{ fontSize: 12.5, opacity: 0.7 }}>Pass it around · 2–4 players</span></span>
+            </button>
+          </div>
+        )}
+
+        {mode === 'remote' && (
+          <RemoteMatch deck={deck} myTaste={myTaste} onOpenTitle={onOpenTitle} onExit={() => setMode('choose')} />
+        )}
+
+        {mode === 'local' && stage === 'setup' && (
           <div style={{ textAlign: 'center', maxWidth: 360, margin: '0 auto' }}>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14, color: '#7dd3fc' }}><Icon name="users" size={40} /></div>
             <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em' }}>What do you both watch?</div>
@@ -135,7 +161,7 @@ export default function MatchMode({ deck, onClose, onOpenTitle, onBlend }: {
           </div>
         )}
 
-        {stage === 'handoff' && (
+        {mode === 'local' && stage === 'handoff' && (
           <div style={{ textAlign: 'center', maxWidth: 340, margin: '0 auto' }}>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14, color: '#7dd3fc' }}><Icon name="share" size={36} /></div>
             <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.6 }}>Pass the phone to</div>
@@ -148,7 +174,7 @@ export default function MatchMode({ deck, onClose, onOpenTitle, onBlend }: {
           </div>
         )}
 
-        {stage === 'swipe' && remaining.length > 0 && (
+        {mode === 'local' && stage === 'swipe' && remaining.length > 0 && (
           <div>
             <div style={{ textAlign: 'center', marginBottom: 10 }}>
               <span style={{ fontSize: 12.5, fontWeight: 700, opacity: 0.7 }}>{names.current[cur]} · {Math.min(idx + 1, total)}/{total}</span>
@@ -165,7 +191,7 @@ export default function MatchMode({ deck, onClose, onOpenTitle, onBlend }: {
           </div>
         )}
 
-        {stage === 'results' && <Results matches={matches()} players={names.current.length} onOpenTitle={onOpenTitle} onAgain={() => setStage('setup')} onClose={close} />}
+        {mode === 'local' && stage === 'results' && <Results matches={matches()} players={names.current.length} onOpenTitle={onOpenTitle} onAgain={() => setStage('setup')} onClose={close} />}
       </main>
     </div>
   )

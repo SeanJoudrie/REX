@@ -89,8 +89,17 @@ Canonical key everywhere: `type:tmdb_id` (e.g. `person:5292`, `company:41077`).
       - [x] **Mode B — blended deck:** paste a friend's taste code in Match
         setup → `mergeTaste` consensus (`min(A,B)` + a little avg) re-ranks the
         main deck for both of you, with a "Blending with…" banner. Zero infra.
-      - [ ] **Mode C — remote realtime:** `match_sessions` table (backup-style
-        code), both phones pull one deck snapshot, ~2s poll for live intersection.
+      - [x] **Mode C — remote realtime:** two phones connect by a 4-char code,
+        pull one shared deck snapshot, and ~1.5s poll surfaces a live Tinder-style
+        "It's a Match!" pop-up the moment both like a title. Round length is
+        selectable (Quick 15 / Standard 30 / Marathon 75). Summary shows matches
+        plus "recommended for you both" (blended `mergeTaste` recs) when overlap
+        is thin. Backend: Supabase `match_rooms` table (RLS-on, no policies) +
+        `match` edge function (create/join/sync, CORS+rate-limit, verify_jwt off),
+        mirroring `backup`. Client transport (`lib/matchRoom.ts`) is cloud when a
+        proxy is set, else localStorage (same-browser demo + offline-testable).
+        _Open: true endless paging (Marathon is a large fixed deck); room TTL
+        cleanup; presence/disconnect handling._
 - [ ] **Taste-recipe builder** — boolean tag stacking (A24 + Horror − Found-Footage)
       → transient deck via with_/without_ params.
 - [ ] **Smart shelves + "why this?" provenance** — pin a tag/recipe as a reusable
