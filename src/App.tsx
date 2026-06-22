@@ -158,11 +158,18 @@ export default function App() {
           R<span style={{ color: '#22c55e' }}>E</span>X
         </div>
         {screen === 'deck' && (
-          <div role="group" aria-label="Filter by type" style={{ display: 'flex', gap: 6, background: 'rgba(255,255,255,0.06)', padding: 4, borderRadius: 999 }}>
+          <div role="group" aria-label="Filter by type" style={{ position: 'relative', display: 'flex', background: 'rgba(255,255,255,0.06)', padding: 4, borderRadius: 999 }}>
+            {/* Sliding thumb — only this moves; the labels just cross-fade. */}
+            <div aria-hidden style={{
+              position: 'absolute', top: 4, bottom: 4, left: 4, width: 'calc((100% - 8px) / 3)',
+              borderRadius: 999, background: '#fff',
+              transform: `translateX(${(['all', 'movie', 'tv'] as Filter[]).indexOf(filter) * 100}%)`,
+              transition: 'transform 170ms cubic-bezier(0.32, 0.72, 0, 1)',
+            }} />
             {(['all', 'movie', 'tv'] as Filter[]).map(f => (
               <button key={f} onClick={() => setFilter(f)} aria-pressed={filter === f}
-                style={{ fontSize: 12, fontWeight: 700, padding: '6px 12px', borderRadius: 999, cursor: 'pointer', border: 'none',
-                  background: filter === f ? '#fff' : 'transparent', color: filter === f ? '#0B0B12' : '#fff' }}>
+                style={{ position: 'relative', zIndex: 1, flex: 1, fontSize: 12, fontWeight: 700, padding: '6px 12px', borderRadius: 999, cursor: 'pointer', border: 'none',
+                  background: 'transparent', color: filter === f ? '#0B0B12' : '#fff', transition: 'color 120ms linear' }}>
                 {f === 'all' ? 'All' : f === 'movie' ? 'Film' : 'TV'}
               </button>
             ))}
@@ -272,7 +279,13 @@ function NavBtn({ active, onClick, label, icon, badge }: { active: boolean; onCl
       style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '9px 0 8px', cursor: 'pointer', background: 'transparent', border: 'none', color: active ? '#fff' : 'rgba(255,255,255,0.45)' }}>
       <span style={{ position: 'relative', display: 'flex' }}>
         <Icon name={icon} size={21} fill={active && icon !== 'eye'} />
-        {!!badge && <span aria-label={`${badge}`} style={{ position: 'absolute', top: -6, right: -11, fontSize: 10, fontWeight: 800, minWidth: 16, height: 16, lineHeight: '16px', textAlign: 'center', borderRadius: 999, background: '#22c55e', color: '#06210f' }}>{badge}</span>}
+        {!!badge && (
+          // key={badge} remounts on every count change, re-firing the catch pop
+          // (pill) + roll (the new number rises into the clipped pill).
+          <span key={badge} aria-label={`${badge}`} style={{ position: 'absolute', top: -6, right: -11, fontSize: 10, fontWeight: 800, minWidth: 16, height: 16, lineHeight: '16px', textAlign: 'center', borderRadius: 999, background: '#22c55e', color: '#06210f', overflow: 'hidden', animation: 'rexBadgeCatch 260ms cubic-bezier(0.34,1.56,0.64,1)' }}>
+            <span style={{ display: 'inline-block', animation: 'rexDigitRoll 200ms cubic-bezier(0.2,0.7,0.2,1)' }}>{badge}</span>
+          </span>
+        )}
       </span>
       <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.03em' }}>{label}</span>
     </button>

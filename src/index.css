@@ -24,3 +24,31 @@ body {
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
+
+/* ── Micro-motion keyframes (see SwipeDeck / NavBtn). All ≤260ms. ─────────── */
+/* Badge "catch" — one controlled overshoot when the watchlist count ticks up. */
+@keyframes rexBadgeCatch {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.26); }
+  100% { transform: scale(1); }
+}
+/* New count rolls up into the badge clip. */
+@keyframes rexDigitRoll {
+  0%   { transform: translateY(100%); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+/* Stamp "pop" the instant a drag crosses the commit threshold. */
+@keyframes rexStampPop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+/* Respect users who ask for less motion — kill the decorative keyframes. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

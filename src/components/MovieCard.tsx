@@ -54,7 +54,8 @@ function MovieCard({ t, dimmed }: { t: Title; dimmed?: boolean }) {
         </div>
       </div>
 
-      {dimmed && <div style={{ position: 'absolute', inset: 0, background: 'rgba(11,11,18,0.4)' }} />}
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(11,11,18,0.4)', opacity: dimmed ? 1 : 0, transition: 'opacity 200ms', pointerEvents: 'none' }} />
+
     </div>
   )
 }

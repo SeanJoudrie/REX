@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { CSSProperties, HTMLAttributes, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { Title } from '../types'
 import MovieCard from './MovieCard'
 import Icon from './Icon'
@@ -9,18 +9,23 @@ const FLICK_VELOCITY = 0.5  // px/ms; a fast flick commits below THRESHOLD
 const DURATION = 280        // ms; MUST stay in sync with the CSS transform transition
 
 type Action = 'like' | 'pass' | 'watched'
+const ACTION_COLOR: Record<Action, string> = { like: '#22c55e', pass: '#ef4444', watched: '#38bdf8' }
 
 const reducedMotion = () =>
   typeof window !== 'undefined' &&
   !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
-function Stamp({ label, color, pos, o }: { label: string; color: string; pos: CSSProperties; o: number }) {
+function Stamp({ label, color, pos, o, popKey }: { label: string; color: string; pos: CSSProperties; o: number; popKey?: number }) {
   return (
     <div style={{
       position: 'absolute', opacity: o, pointerEvents: 'none', ...pos,
       border: `3px solid ${color}`, color, borderRadius: 10,
       padding: '4px 12px', fontSize: 22, fontWeight: 900, letterSpacing: '0.06em',
-    } as CSSProperties}>{label}</div>
+    } as CSSProperties}>
+      {/* The rotate lives on the parent; the pop scales this span so they don't
+          fight over `transform`. Re-keyed by armTick to re-fire on each arming. */}
+      <span key={popKey} style={{ display: 'inline-block', animation: popKey ? 'rexStampPop 120ms ease-out' : undefined }}>{label}</span>
+    </div>
   )
 }
 
@@ -63,27 +68,40 @@ export default function SwipeDeck({
   const dragging = useRef(false)
   const moved = useRef(false)
   const leaving = useRef(false)
-  const snapping = useRef(false)
   const timer = useRef<number | null>(null)
   const activePointer = useRef<number | null>(null)
+
+  // #4 commit-line detent: which action (if any) the current drag is past the
+  // threshold for. Latched so the haptic + pop fire once per crossing.
+  const [armed, setArmed] = useState<Action | null>(null)
+  const armedRef = useRef<Action | null>(null)
+  const [armTick, setArmTick] = useState(0)
 
   const top: Title | undefined = deck[0]
 
   const setOff = (x: number, y: number) => { dxRef.current = x; dyRef.current = y; setDx(x); setDy(y) }
 
+  const setArm = (a: Action | null) => {
+    if (armedRef.current === a) return
+    armedRef.current = a
+    setArmed(a)
+    if (a !== null) { if (navigator.vibrate) navigator.vibrate(8); setArmTick(t => t + 1) }
+  }
+
   useEffect(() => () => { if (timer.current !== null) window.clearTimeout(timer.current) }, [])
 
   const commit = (action: Action) => {
     if (leaving.current || !top) return
+    setArm(null)
     leaving.current = true
     const card = top
     if (navigator.vibrate) navigator.vibrate(action === 'watched' ? 12 : action === 'like' ? 16 : 7)
 
     const run = () => {
       ;(action === 'like' ? onLike : action === 'pass' ? onPass : onWatched)(card)
-      snapping.current = true
+      // The flown card unmounts (stable keys), so dx/dy=0 now belongs to the
+      // card promoting up from the depth slot — it transitions into place.
       setOff(0, 0)
-      requestAnimationFrame(() => { snapping.current = false })
       leaving.current = false
     }
     if (reducedMotion()) { run(); return }
@@ -93,7 +111,7 @@ export default function SwipeDeck({
     timer.current = window.setTimeout(() => { timer.current = null; run() }, DURATION)
   }
 
-  // Keyboard control: ←/→ pass/like, ↑ watched, i/details for the sheet.
+  // Keyboard control: ←/→ pass/like, ↑ watched, i for the detail sheet.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!top || leaving.current) return
@@ -132,6 +150,12 @@ export default function SwipeDeck({
     moved.current = true
     if (axis.current === 'h') setOff(ax, 0)
     else setOff(0, Math.min(ay, 40)) // allow upward freely; resist downward drag
+
+    // #4: arm/disarm at the commit line (once per crossing via setArm's latch).
+    let armNow: Action | null = null
+    if (axis.current === 'h' && Math.abs(ax) > threshold) armNow = ax > 0 ? 'like' : 'pass'
+    else if (axis.current === 'v' && ay < -threshold) armNow = 'watched'
+    setArm(armNow)
   }
 
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -146,51 +170,69 @@ export default function SwipeDeck({
     } else if (ax === 'v' && (y < -threshold || vy.current < -flickVelocity)) {
       commit('watched')
     } else {
+      setArm(null)
       if (!moved.current) onOpenDetail(top)
       setOff(0, 0)
     }
   }
 
   const onPointerCancel = () => {
-    dragging.current = false; axis.current = null; activePointer.current = null; setOff(0, 0)
+    dragging.current = false; axis.current = null; activePointer.current = null
+    setArm(null); setOff(0, 0)
   }
 
   const clamp = (n: number) => Math.max(0, Math.min(1, n))
 
+  const interactiveProps: HTMLAttributes<HTMLDivElement> = {
+    role: 'group',
+    'aria-roledescription': 'Swipe card',
+    'aria-label': `${top.title}, ${top.year}, rated ${top.rating.toFixed(1)} of 10. Arrow keys: left pass, right save, up watched; i for details.`,
+    onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, width: '100%' }}>
       <div style={{ position: 'relative', width: '100%', maxWidth: 400, height: 'min(62vh, 540px)' }}>
-        {deck.slice(1, 3).map((t, i) => {
-          const off = i + 1
+        {/* One keyed stack: top card is interactive, the two behind sit at depth
+            poses. Stable keys mean a card that was behind *transitions* up to the
+            top when the deck shifts, instead of re-mounting in place. */}
+        {deck.slice(0, 3).map((t, i) => {
+          const isTop = i === 0
           return (
-            <div key={`${t.mediaType}-${t.id}`} aria-hidden style={{
-              position: 'absolute', inset: 0,
-              transform: `translateY(${off * 10}px) scale(${1 - off * 0.04})`,
-              opacity: 1 - off * 0.18, transition: 'transform 0.25s, opacity 0.25s', zIndex: 3 - off,
-            }}>
-              <MovieCard t={t} dimmed />
+            <div
+              key={`${t.mediaType}-${t.id}`}
+              {...(isTop ? interactiveProps : { 'aria-hidden': true })}
+              style={{
+                position: 'absolute', inset: 0, zIndex: 5 - i,
+                cursor: isTop ? 'grab' : undefined,
+                touchAction: isTop ? 'none' : undefined,
+                transform: isTop
+                  ? `translate(${dx}px, ${dy}px) rotate(${dx * 0.04}deg)`
+                  : `translateY(${i * 10}px) scale(${1 - i * 0.04})`,
+                opacity: isTop ? 1 : 1 - i * 0.18,
+                transition: isTop
+                  ? (dragging.current ? 'none' : `transform ${DURATION}ms cubic-bezier(0.2,0.7,0.2,1)`)
+                  : 'transform 200ms cubic-bezier(0.2,0.7,0.2,1), opacity 200ms',
+              }}>
+              <MovieCard t={t} dimmed={!isTop} />
+              {isTop && (
+                <>
+                  {/* #4: the card edge "arms" to the action color past threshold,
+                      and snaps back instantly (no transition) when you fall below. */}
+                  <div aria-hidden style={{
+                    position: 'absolute', inset: 0, borderRadius: 24, pointerEvents: 'none',
+                    border: '2px solid transparent',
+                    borderColor: armed ? ACTION_COLOR[armed] : 'transparent',
+                    transition: armed ? 'border-color 90ms ease-out' : 'none',
+                  }} />
+                  <Stamp label="WATCH" color="#22c55e" pos={{ top: 26, left: 22, transform: 'rotate(-14deg)' }} o={clamp((dx - 40) / 80)} popKey={armed === 'like' ? armTick : undefined} />
+                  <Stamp label="PASS" color="#ef4444" pos={{ top: 26, right: 22, transform: 'rotate(14deg)' }} o={clamp((-dx - 40) / 80)} popKey={armed === 'pass' ? armTick : undefined} />
+                  <Stamp label="WATCHED" color="#38bdf8" pos={{ top: 26, left: '50%', transform: 'translateX(-50%) rotate(-6deg)' }} o={clamp((-dy - 30) / 70)} popKey={armed === 'watched' ? armTick : undefined} />
+                </>
+              )}
             </div>
           )
         })}
-
-        <div
-          role="group"
-          aria-roledescription="Swipe card"
-          aria-label={`${top.title}, ${top.year}, rated ${top.rating.toFixed(1)} of 10. Arrow keys: left pass, right save, up watched; i for details.`}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerCancel}
-          style={{
-            position: 'absolute', inset: 0, zIndex: 5, cursor: 'grab', touchAction: 'none',
-            transform: `translate(${dx}px, ${dy}px) rotate(${dx * 0.04}deg)`,
-            transition: dragging.current || snapping.current ? 'none' : `transform ${DURATION}ms cubic-bezier(0.2,0.7,0.2,1)`,
-          }}>
-          <MovieCard t={top} />
-          <Stamp label="WATCH" color="#22c55e" pos={{ top: 26, left: 22, transform: 'rotate(-14deg)' }} o={clamp((dx - 40) / 80)} />
-          <Stamp label="PASS" color="#ef4444" pos={{ top: 26, right: 22, transform: 'rotate(14deg)' }} o={clamp((-dx - 40) / 80)} />
-          <Stamp label="WATCHED" color="#38bdf8" pos={{ top: 26, left: '50%', transform: 'translateX(-50%) rotate(-6deg)' }} o={clamp((-dy - 30) / 70)} />
-        </div>
       </div>
 
       {/* Thumb arc — swipe is primary; up arrow = watched */}
