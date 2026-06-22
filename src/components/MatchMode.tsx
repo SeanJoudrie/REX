@@ -123,7 +123,8 @@ export default function MatchMode({ deck, onClose, onOpenTitle }: {
               onLike={t => record(t, true)}
               onPass={t => record(t, false)}
               onWatched={t => record(t, true)}
-              onOpenDetail={() => { /* keep picks blind during a round */ }}
+              onOpenDetail={() => { /* no detail sheet mid-round */ }}
+              showDetails={false}
             />
           </div>
         )}

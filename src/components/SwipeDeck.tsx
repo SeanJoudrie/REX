@@ -39,7 +39,7 @@ function ActionButton({ onClick, label, icon, color }: { onClick: () => void; la
 
 export default function SwipeDeck({
   deck, onLike, onPass, onWatched, onOpenDetail,
-  threshold = THRESHOLD, flickVelocity = FLICK_VELOCITY,
+  threshold = THRESHOLD, flickVelocity = FLICK_VELOCITY, showDetails = true,
 }: {
   deck: Title[]
   onLike: (t: Title) => void
@@ -48,6 +48,7 @@ export default function SwipeDeck({
   onOpenDetail: (t: Title) => void
   threshold?: number
   flickVelocity?: number
+  showDetails?: boolean
 }) {
   const [dx, setDx] = useState(0)
   const [dy, setDy] = useState(0)
@@ -102,7 +103,7 @@ export default function SwipeDeck({
       if (e.key === 'ArrowLeft') { e.preventDefault(); commit('pass') }
       else if (e.key === 'ArrowRight') { e.preventDefault(); commit('like') }
       else if (e.key === 'ArrowUp') { e.preventDefault(); commit('watched') }
-      else if (e.key.toLowerCase() === 'i') { e.preventDefault(); onOpenDetail(top) }
+      else if (showDetails && e.key.toLowerCase() === 'i') { e.preventDefault(); onOpenDetail(top) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -199,7 +200,7 @@ export default function SwipeDeck({
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         <ActionButton onClick={() => commit('pass')} label="Pass" icon={<Icon name="x" size={22} />} color="#ef4444" />
         <ActionButton onClick={() => commit('watched')} label="Mark watched" icon={<Icon name="eye" size={22} />} color="#38bdf8" />
-        <ActionButton onClick={() => onOpenDetail(top)} label="Details" icon={<Icon name="info" size={22} />} color="#9ca3af" />
+        {showDetails && <ActionButton onClick={() => onOpenDetail(top)} label="Details" icon={<Icon name="info" size={22} />} color="#9ca3af" />}
         <ActionButton onClick={() => commit('like')} label="Add to watchlist" icon={<Icon name="check" size={22} />} color="#22c55e" />
       </div>
     </div>

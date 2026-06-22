@@ -83,6 +83,9 @@ export default function App() {
   const undoTimer = useRef<number | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [matchOpen, setMatchOpen] = useState(false)
+  // Title queued to open after Match closes — lets us pop Match's own history
+  // entry (via Back) instead of orphaning it, then open the detail cleanly.
+  const pendingMatchOpen = useRef<Title | null>(null)
 
   // Latest taste read inside load() via a ref, so learning doesn't trigger a
   // refetch on every swipe — it applies on the next deck (filter change / fresh
@@ -179,9 +182,11 @@ export default function App() {
 
   // Auto-paginate: when the visible deck runs low, pull the next page in the
   // background so the user never feels the wall (unless we've truly run out).
+  // We also watch pool.length so a page that's entirely already-seen (deck.length
+  // unchanged) still re-triggers the next page instead of stalling.
   useEffect(() => {
     if (screen === 'deck' && status === 'ready' && !atEnd && deck.length < 6) loadMore()
-  }, [deck.length, screen, status, atEnd, loadMore])
+  }, [deck.length, pool.length, screen, status, atEnd, loadMore])
 
   const savedKeys = useMemo(() => new Set(watchlist.map(keyOf)), [watchlist])
   const isSaved = (t: Title) => savedKeys.has(keyOf(t))
@@ -442,7 +447,14 @@ export default function App() {
       {ratingFor && <RatingSheet t={ratingFor} onRate={s => { rate(ratingFor, s); setRatingFor(null) }} onClose={() => setRatingFor(null)} />}
       {!onboarded && <Onboarding onDone={() => setOnboarded(true)} />}
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
-      {matchOpen && <MatchMode deck={deck} onClose={() => setMatchOpen(false)} onOpenTitle={t => { setMatchOpen(false); openDetail(t) }} />}
+      {matchOpen && <MatchMode deck={deck}
+        onClose={() => {
+          setMatchOpen(false)
+          const t = pendingMatchOpen.current
+          pendingMatchOpen.current = null
+          if (t) setTimeout(() => openDetail(t), 0)
+        }}
+        onOpenTitle={t => { pendingMatchOpen.current = t; window.history.back() }} />}
     </div>
   )
 }
