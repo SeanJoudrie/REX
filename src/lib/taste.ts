@@ -1,8 +1,12 @@
-import type { Title } from '../types'
+import type { Tag, Title } from '../types'
 
 // Lightweight on-device taste model: a weight per genre, nudged by every signal.
 // Right swipe amplifies, left swipe suppresses (gently), stars push hardest.
 export type TasteVec = Record<string, { w: number; n: number }>
+
+// Entity affinity (cast/director/studio/keyword), keyed "type:id". Fed by
+// informed actions (opened/watched) where the full tag set is known.
+export type EntityAff = Record<string, { w: number; n: number; type: string; label: string }>
 
 export const LIKE_DELTA = 0.15
 export const PASS_DELTA = -0.08
@@ -11,6 +15,59 @@ export const starDelta = (stars: number) => ((stars - 3) / 2) * 0.3
 
 const clip = (x: number) => Math.max(-1, Math.min(1, x))
 const conf = (n: number) => n / (n + 5) // confidence: a genre needs repeats to swing
+
+// Value-matrix weights (base unit = a right swipe). Genres use TasteVec deltas
+// above; these scale the entity affinity channel.
+const ENTITY_BASE = { likeInformed: 0.18, like: 0.14, passInformed: -0.11, pass: -0.05 }
+export const entityStarDelta = (stars: number) => [0, -0.36, -0.14, 0, 0.22, 0.42][stars] ?? 0
+// Type salience: directors/keywords are the strongest fingerprint.
+const typeMult = (tag: Tag) =>
+  tag.role === 'director' || tag.role === 'creator' ? 1.4
+    : tag.type === 'keyword' ? 1.3
+      : tag.type === 'person' ? 1.2
+        : tag.type === 'company' ? 1.1
+          : 1.0
+
+export const entityKey = (tag: Tag) => (tag.type === 'genre' ? `genre:${tag.name.toLowerCase()}` : `${tag.type}:${tag.id}`)
+
+/** Apply a signal across a title's entity tags (skips genres — those go to
+ *  TasteVec). billing decays cast weight down the credits order. */
+export function applyEntities(aff: EntityAff, tags: Tag[] | undefined, base: number): EntityAff {
+  if (!tags || !base) return aff
+  const next: EntityAff = { ...aff }
+  let castRank = 0
+  for (const tag of tags) {
+    if (tag.type === 'genre') continue
+    const billing = tag.role === 'cast' ? Math.max(0.5, 1 - castRank++ * 0.15) : 1
+    const k = entityKey(tag)
+    const cur = next[k] ?? { w: 0, n: 0, type: tag.type, label: tag.name }
+    next[k] = { w: clip(cur.w + base * typeMult(tag) * billing), n: cur.n + 1, type: tag.type, label: tag.name }
+  }
+  return next
+}
+
+export const ENTITY_DELTAS = ENTITY_BASE
+
+/** Lazy EWMA decay so taste drifts and the echo chamber can't calcify. */
+export function decayTaste(vec: TasteVec, days: number): TasteVec {
+  if (days <= 0) return vec
+  const f = Math.pow(0.98, days)
+  const out: TasteVec = {}
+  for (const [k, v] of Object.entries(vec)) out[k] = { w: v.w * f, n: v.n }
+  return out
+}
+export function decayAff(aff: EntityAff, days: number): EntityAff {
+  if (days <= 0) return aff
+  const f = Math.pow(0.98, days)
+  const out: EntityAff = {}
+  for (const [k, v] of Object.entries(aff)) out[k] = { ...v, w: v.w * f }
+  return out
+}
+
+/** Top learned entities for "why this" / future Mirror. */
+export function topEntities(aff: EntityAff, minW = 0.18, minN = 2, limit = 12) {
+  return Object.values(aff).filter(v => v.w >= minW && v.n >= minN).sort((a, b) => b.w - a.w).slice(0, limit)
+}
 
 export function applySignal(vec: TasteVec, genres: string[], delta: number): TasteVec {
   if (!genres.length || !delta) return vec

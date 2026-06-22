@@ -121,36 +121,52 @@ export async function fetchDeck(query: DeckQuery, signal?: AbortSignal): Promise
     return sortSample(filtered, query.sort)
   }
 
-  // Live path. Bound the request with a timeout and honor a caller abort
-  // (e.g. unmount / retry) so a hung proxy can't pin the deck on "loading".
-  const ctrl = new AbortController()
-  const onAbort = () => ctrl.abort()
-  if (signal) {
-    if (signal.aborted) ctrl.abort()
-    else signal.addEventListener('abort', onAbort, { once: true })
-  }
-  let timedOut = false
-  const timer = setTimeout(() => { timedOut = true; ctrl.abort() }, TIMEOUT_MS)
+  // Live path with a short response cache + in-flight dedup, so flipping filters
+  // back and forth (same query) doesn't re-hit the proxy.
+  const key = JSON.stringify(query)
+  const hit = deckCache.get(key)
+  if (hit && Date.now() - hit.t < CACHE_TTL) return hit.data
+  const pending = deckInflight.get(key)
+  if (pending) return pending
 
-  try {
-    const res = await fetch(`${PROXY}/discover`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(query),
-      signal: ctrl.signal,
-    })
-    if (!res.ok) throw new Error(`deck fetch failed: ${res.status}`)
-    const data: unknown = await res.json()
-    if (!Array.isArray(data)) throw new Error('deck response was not an array')
-    return data.map(toTitle).filter((t): t is Title => t !== null)
-  } catch (err) {
-    if (timedOut) throw new Error('deck fetch timed out')
-    throw err
-  } finally {
-    clearTimeout(timer)
-    if (signal) signal.removeEventListener('abort', onAbort)
-  }
+  const run = (async () => {
+    const ctrl = new AbortController()
+    const onAbort = () => ctrl.abort()
+    if (signal) {
+      if (signal.aborted) ctrl.abort()
+      else signal.addEventListener('abort', onAbort, { once: true })
+    }
+    let timedOut = false
+    const timer = setTimeout(() => { timedOut = true; ctrl.abort() }, TIMEOUT_MS)
+    try {
+      const res = await fetch(`${PROXY}/discover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(query),
+        signal: ctrl.signal,
+      })
+      if (!res.ok) throw new Error(`deck fetch failed: ${res.status}`)
+      const data: unknown = await res.json()
+      if (!Array.isArray(data)) throw new Error('deck response was not an array')
+      const titles = data.map(toTitle).filter((t): t is Title => t !== null)
+      deckCache.set(key, { t: Date.now(), data: titles })
+      return titles
+    } catch (err) {
+      if (timedOut) throw new Error('deck fetch timed out')
+      throw err
+    } finally {
+      clearTimeout(timer)
+      if (signal) signal.removeEventListener('abort', onAbort)
+      deckInflight.delete(key)
+    }
+  })()
+  deckInflight.set(key, run)
+  return run
 }
+
+const CACHE_TTL = 5 * 60 * 1000
+const deckCache = new Map<string, { t: number; data: Title[] }>()
+const deckInflight = new Map<string, Promise<Title[]>>()
 
 /** Fetch a single title by id — used to cold-open a shared deep link. */
 export async function fetchTitleById(mediaType: MediaType, id: number, signal?: AbortSignal): Promise<Title | null> {

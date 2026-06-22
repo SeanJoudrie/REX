@@ -25,14 +25,15 @@ function Stamp({ label, color, pos, o }: { label: string; color: string; pos: CS
 }
 
 function ActionButton({ onClick, label, icon, color }: { onClick: () => void; label: string; icon: ReactNode; color: string }) {
+  // Transparent 72px tap target around a 52px visual circle — high-velocity
+  // thumbs miss small precise targets, so the hit-slop exceeds the visible ring.
   return (
     <button onClick={onClick} aria-label={label}
-      style={{
-        width: 54, height: 54, borderRadius: 999, cursor: 'pointer',
-        background: 'rgba(255,255,255,0.06)', border: `1.5px solid ${color}`, color,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        touchAction: 'manipulation',
-      }}>{icon}</button>
+      style={{ width: 72, height: 72, borderRadius: 999, cursor: 'pointer', background: 'none', border: 'none', padding: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'manipulation', color }}>
+      <span style={{ width: 52, height: 52, borderRadius: 999, background: 'rgba(255,255,255,0.06)', border: `1.5px solid ${color}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</span>
+    </button>
   )
 }
 
@@ -77,7 +78,8 @@ export default function SwipeDeck({
     if (leaving.current || !top) return
     leaving.current = true
     const card = top
-    if (navigator.vibrate) navigator.vibrate(action === 'watched' ? 12 : action === 'like' ? 16 : 7)
+    // Haptic grammar: a distinct feel per verb (second, non-visual channel).
+    if (navigator.vibrate) navigator.vibrate(action === 'watched' ? [10, 40, 10] : action === 'like' ? 16 : 7)
 
     const run = () => {
       ;(action === 'like' ? onLike : action === 'pass' ? onPass : onWatched)(card)

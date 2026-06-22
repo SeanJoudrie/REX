@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import type { MediaType, Title, WatchedItem } from './types'
+import type { MediaType, Tag, Title, WatchedItem } from './types'
 import { fetchDeck, fetchTitleById, USING_SAMPLE } from './tmdb'
 import { loadState, saveState } from './lib/storage'
 import SwipeDeck from './components/SwipeDeck'
@@ -11,8 +11,8 @@ import RatingSheet from './components/RatingSheet'
 import Onboarding from './components/Onboarding'
 import Settings from './components/Settings'
 import Icon from './components/Icon'
-import type { TasteVec } from './lib/taste'
-import { applySignal, bottomGenres, rankDeck, topGenres, LIKE_DELTA, PASS_DELTA, starDelta } from './lib/taste'
+import type { TasteVec, EntityAff } from './lib/taste'
+import { applySignal, applyEntities, bottomGenres, rankDeck, topGenres, decayTaste, decayAff, ENTITY_DELTAS, entityStarDelta, LIKE_DELTA, PASS_DELTA, starDelta } from './lib/taste'
 
 type Screen = 'deck' | 'watchlist' | 'watched'
 type Filter = 'all' | MediaType
@@ -32,12 +32,22 @@ const pillSelect = (active: boolean): CSSProperties => ({
 })
 
 export default function App() {
-  const initial = useMemo(loadState, [])
+  const initial = useMemo(() => {
+    const s = loadState()
+    const days = s.tasteDecayedAt ? (Date.now() - s.tasteDecayedAt) / 86_400_000 : 0
+    if (days > 0.5) { s.taste = decayTaste(s.taste, days); s.affinity = decayAff(s.affinity, days) }
+    s.tasteDecayedAt = Date.now()
+    return s
+  }, [])
   const [watchlist, setWatchlist] = useState<Title[]>(initial.watchlist)
   const [watched, setWatched] = useState<WatchedItem[]>(initial.watched)
   const [seen, setSeen] = useState<string[]>(initial.seen)
   const [likes, setLikes] = useState<string[]>(initial.likes)
   const [dislikes, setDislikes] = useState<string[]>(initial.dislikes)
+  const [affinity, setAffinity] = useState<EntityAff>(initial.affinity)
+  const [page, setPage] = useState(1)
+  // Tags for titles whose detail was opened (informed signals + why-this).
+  const enrichedTags = useRef<Map<string, Tag[]>>(new Map())
   const [taste, setTaste] = useState<TasteVec>(initial.taste)
   const [onboarded, setOnboarded] = useState<boolean>(initial.onboarded)
   const [pool, setPool] = useState<Title[]>([])
@@ -82,11 +92,12 @@ export default function App() {
       pivot: pivot ? { type: pivot.type, id: pivot.id, name: pivot.name } : undefined,
       withGenres: genre ? undefined : (withGenres.length ? withGenres : undefined),
       withoutGenres: withoutGenres.length ? withoutGenres : undefined,
+      page,
     }, ctrl.signal)
       .then(d => { setPool(rankDeck(d, tasteRef.current)); setStatus('ready') })
       .catch((e: unknown) => { if ((e as Error)?.name !== 'AbortError') setStatus('error') })
     return () => ctrl.abort()
-  }, [filter, genre, year, sort, service, actor, likes, dislikes, pivot])
+  }, [filter, genre, year, sort, service, actor, likes, dislikes, pivot, page])
   useEffect(() => load(), [load])
 
   // Cold-open a shared deep link (#/t/:type/:id): strip the hash, fetch the
@@ -101,8 +112,23 @@ export default function App() {
   const hydrated = useRef(false)
   useEffect(() => {
     if (!hydrated.current) { hydrated.current = true; return }
-    saveState({ watchlist, watched, seen, likes, dislikes, taste, onboarded })
-  }, [watchlist, watched, seen, likes, dislikes, taste, onboarded])
+    saveState({ watchlist, watched, seen, likes, dislikes, taste, affinity, tasteDecayedAt: initial.tasteDecayedAt, onboarded })
+  }, [watchlist, watched, seen, likes, dislikes, taste, affinity, onboarded, initial.tasteDecayedAt])
+
+  // Reset to page 1 whenever the query (filters/taste) changes; "Fresh batch"
+  // advances the page instead.
+  const filterSig = `${filter}|${genre}|${year}|${sort}|${service}|${actor}|${pivot ? JSON.stringify(pivot) : ''}|${likes.join(',')}|${dislikes.join(',')}`
+  const prevSig = useRef(filterSig)
+  useEffect(() => {
+    if (prevSig.current !== filterSig) { prevSig.current = filterSig; setPage(p => (p === 1 ? p : 1)) }
+  }, [filterSig])
+
+  // Milestone haptic every 10th save.
+  const prevWlLen = useRef(watchlist.length)
+  useEffect(() => {
+    if (watchlist.length > prevWlLen.current && watchlist.length % 10 === 0 && navigator.vibrate) navigator.vibrate([12, 30, 12, 30, 20])
+    prevWlLen.current = watchlist.length
+  }, [watchlist.length])
 
   const excluded = useMemo(() => {
     const s = new Set(seen)
@@ -127,13 +153,19 @@ export default function App() {
   const like = (t: Title) => {
     const k = keyOf(t); markSeen(k)
     setWatchlist(w => (w.some(x => keyOf(x) === k) ? w : [...w, t]))
-    setTaste(v => applySignal(v, t.genres, LIKE_DELTA)) // amplify these genres
-    showUndo(t, 'like', LIKE_DELTA)
+    const tags = enrichedTags.current.get(k)
+    const gd = LIKE_DELTA * (tags ? 1.25 : 1) // informed > impulse
+    setTaste(v => applySignal(v, t.genres, gd))
+    if (tags) setAffinity(a => applyEntities(a, tags, ENTITY_DELTAS.likeInformed))
+    showUndo(t, 'like', gd)
   }
   const pass = (t: Title) => {
-    markSeen(keyOf(t))
-    setTaste(v => applySignal(v, t.genres, PASS_DELTA)) // gently suppress
-    showUndo(t, 'pass', PASS_DELTA)
+    const k = keyOf(t); markSeen(k)
+    const tags = enrichedTags.current.get(k)
+    const gd = PASS_DELTA * (tags ? 2 : 1) // informed pass = genuine "not for me"
+    setTaste(v => applySignal(v, t.genres, gd))
+    if (tags) setAffinity(a => applyEntities(a, tags, ENTITY_DELTAS.passInformed))
+    showUndo(t, 'pass', gd)
   }
 
   const markWatched = (t: Title) => {
@@ -166,6 +198,17 @@ export default function App() {
     const contr = (s: number) => (s ? starDelta(s) : 0) // unrated counts as neutral
     const d = contr(stars) - contr(prev)
     if (d) setTaste(v => applySignal(v, t.genres, d)) // stars push hardest
+    // Entity affinity from the rating (the heaviest signal) — use cached tags or
+    // fetch them once.
+    const eb = entityStarDelta(stars) - entityStarDelta(prev)
+    if (eb) {
+      const k2 = keyOf(t)
+      const tags = enrichedTags.current.get(k2)
+      if (tags) setAffinity(a => applyEntities(a, tags, eb))
+      else if (!USING_SAMPLE) fetchTitleById(t.mediaType, t.id).then(full => {
+        if (full?.tags) { enrichedTags.current.set(k2, full.tags); setAffinity(a => applyEntities(a, full.tags!, eb)) }
+      }).catch(() => {})
+    }
   }
   const removeWatched = (t: WatchedItem) => setWatched(list => list.filter(x => keyOf(x) !== keyOf(t)))
 
@@ -181,6 +224,7 @@ export default function App() {
     if (USING_SAMPLE) return
     fetchTitleById(t.mediaType, t.id).then(full => {
       if (!full) return
+      if (full.tags) enrichedTags.current.set(keyOf(t), full.tags) // informed signal + why-this
       setDetail(d => (d && keyOf(d) === keyOf(t) ? { ...d, tags: full.tags ?? d.tags, poster: d.poster ?? full.poster, overview: d.overview || full.overview } : d))
     }).catch(() => {})
   }
@@ -189,7 +233,20 @@ export default function App() {
   const deckFromTag = (tag: { type: string; id: number; name: string }) => {
     setDetail(null)
     setScreen('deck')
+    setPage(1)
     setPivot({ type: tag.type, id: tag.id, name: tag.name, label: tag.name })
+  }
+
+  // "Why this?" — the overlap of the title with the user's learned taste.
+  const whyThis = (t: Title): string | null => {
+    const parts: string[] = []
+    for (const g of t.genres) if ((taste[g]?.w ?? 0) > 0.15 && parts.length < 2) parts.push(g)
+    for (const tag of t.tags ?? []) {
+      if (tag.type === 'genre' || parts.length >= 2) continue
+      const a = affinity[`${tag.type}:${tag.id}`]
+      if (a && a.w > 0.18) parts.push(tag.name)
+    }
+    return parts.length ? `Because you like ${parts.slice(0, 2).join(' + ')}` : null
   }
 
   // Taste prefs — a tag is either liked, disliked, or neither.
@@ -281,6 +338,13 @@ export default function App() {
         </div>
       )}
 
+      {/* Cold-start nudge: REX is still learning. */}
+      {screen === 'deck' && status === 'ready' && !pivot && seen.length < 10 && (
+        <div style={{ margin: '0 16px 6px', padding: '7px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', fontSize: 12.5, fontWeight: 600, opacity: 0.85, textAlign: 'center' }}>
+          Swipe {10 - seen.length} more to sharpen your recommendations
+        </div>
+      )}
+
       {/* Main */}
       <main style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: screen === 'deck' ? 'hidden' : 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: screen === 'deck' ? 'center' : 'flex-start', padding: screen === 'deck' ? '6px 16px' : 0 }}>
         {screen === 'deck' ? (
@@ -293,7 +357,7 @@ export default function App() {
           ) : (
             <Centered icon={<Icon name="film" size={40} />} title="That's the deck for now"
               sub={`${filtersActive ? 'Try different filters up top, or ' : ''}get a fresh batch.`}
-              action={{ label: 'Fresh batch', onClick: () => { setSeen([]); load() } }} />
+              action={{ label: 'Fresh batch', onClick: () => setPage(p => p + 1) }} />
           )
         ) : screen === 'watchlist' ? (
           <Watchlist items={watchlist} onOpen={openDetail} onRemove={toggleSave} />
@@ -324,7 +388,7 @@ export default function App() {
         </div>
       )}
 
-      {detail && <Detail t={detail} saved={isSaved(detail)} onClose={() => setDetail(null)} onToggleSave={toggleSave} onPivot={deckFromTag} />}
+      {detail && <Detail t={detail} saved={isSaved(detail)} reason={whyThis(detail)} onClose={() => setDetail(null)} onToggleSave={toggleSave} onPivot={deckFromTag} />}
       {ratingFor && <RatingSheet t={ratingFor} onRate={s => { rate(ratingFor, s); setRatingFor(null) }} onClose={() => setRatingFor(null)} />}
       {!onboarded && <Onboarding onDone={() => setOnboarded(true)} />}
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
