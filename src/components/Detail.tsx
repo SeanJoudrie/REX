@@ -149,7 +149,9 @@ export default function Detail({ t, saved, reason, onClose, onToggleSave, onPivo
           <div style={{ width: 38, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.25)' }} />
         </div>
 
-        <div style={{ height: 150, position: 'relative', background: t.poster ? '#111' : `linear-gradient(155deg, ${t.gradient[0]}, ${t.gradient[1]})` }}>
+        {/* Gradient is the base layer, so a missing/broken poster falls back to
+            the title's color signature instead of a black void. */}
+        <div style={{ height: 150, position: 'relative', background: `linear-gradient(155deg, ${t.gradient[0]}, ${t.gradient[1]})` }}>
           {t.poster && <img src={t.poster} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 20%' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />}
           <button onClick={share} aria-label="Share"
             style={{ position: 'absolute', top: 12, right: 56, width: 36, height: 36, borderRadius: 999, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'manipulation' } as CSSProperties}>
