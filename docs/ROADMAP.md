@@ -68,10 +68,22 @@ Canonical key everywhere: `type:tmdb_id` (e.g. `person:5292`, `company:41077`).
         the heaviest-weighted signals anyway); poster-only swipes feed genre
         affinity. No extra cost. (2) Enrich the batch behind a hard metadata
         cache (cost/latency). (3) Edge-function scoring later.
-- [ ] **The "Mirror"** — 4th screen: fingerprint header (Top Actor/Vibe/Studio as
-      poster collages), per-namespace dimension rails, every chip tappable
-      (pivot) + long-press to tune (more/less/mute → writes affinities), evidence
-      on demand, low-confidence "swipe N more to unlock" state.
+- [x] **The "Mirror" v1** — 4th tab: fingerprint header (generated "taste type"
+      line + Top Person/Vibe/Studio hero chips w/ poster collages), per-namespace
+      dimension rails (People/Studios/Themes/Genres) with confidence bars, every
+      chip tappable → pivot deck, bedrock "films that define you" shelf, and a
+      low-confidence "swipe N more" gate. All on-device, no fetch. (`Mirror.tsx`)
+      - [ ] **v2:** long-press a chip → tune (more/less/mute) writing affinities.
+      - [ ] **v3:** render fingerprint to a `<canvas>` share image; shareable
+        read-only Mirror deep link (backup-style snapshot). v1 ships a text share.
+- [x] **Match Mode A — pass-the-phone** — 2–4 players swipe one snapshotted deck
+      in turn (history-trapped overlay, blind handoff screens), intersection of
+      right-swipes = matches, results sheet → open any match. Ephemeral, zero
+      infra. (`MatchMode.tsx`, launched from the Mirror)
+      - [ ] **Mode B — blended deck:** import a friend's taste (reuse
+        export/import), merge vectors (`min(A,B)` consensus), rank a shared deck.
+      - [ ] **Mode C — remote realtime:** `match_sessions` table (backup-style
+        code), both phones pull one deck snapshot, ~2s poll for live intersection.
 - [ ] **Taste-recipe builder** — boolean tag stacking (A24 + Horror − Found-Footage)
       → transient deck via with_/without_ params.
 - [ ] **Smart shelves + "why this?" provenance** — pin a tag/recipe as a reusable

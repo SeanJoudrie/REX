@@ -4,6 +4,7 @@ type Name =
   | 'discover' | 'bookmark' | 'eye' | 'info' | 'x' | 'check' | 'ticket'
   | 'search' | 'sliders' | 'film' | 'warning' | 'star' | 'list' | 'grid' | 'undo'
   | 'gear' | 'download' | 'upload' | 'share'
+  | 'sparkle' | 'users' | 'heart' | 'plus' | 'minus'
 
 const PATHS: Record<Name, string> = {
   // lucide-style 24x24 paths
@@ -26,6 +27,11 @@ const PATHS: Record<Name, string> = {
   download: 'M12 3v12 M7 10l5 5 5-5 M5 21h14',
   upload: 'M12 21V9 M7 14l5-5 5 5 M5 3h14',
   share: 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8 M16 6l-4-4-4 4 M12 2v13',
+  sparkle: 'M12 3l1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3z',
+  users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75',
+  heart: 'M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.49 4.04 3 5.5l7 7z',
+  plus: 'M12 5v14 M5 12h14',
+  minus: 'M5 12h14',
 }
 
 export default function Icon({ name, size = 20, fill = false, style }: {

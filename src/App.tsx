@@ -7,6 +7,8 @@ import { loadState, saveState } from './lib/storage'
 import SwipeDeck from './components/SwipeDeck'
 import Watchlist from './components/Watchlist'
 import Watched from './components/Watched'
+import Mirror from './components/Mirror'
+import MatchMode from './components/MatchMode'
 import Detail from './components/Detail'
 import RatingSheet from './components/RatingSheet'
 import Onboarding from './components/Onboarding'
@@ -15,7 +17,7 @@ import Icon from './components/Icon'
 import type { TasteVec, EntityAff } from './lib/taste'
 import { applySignal, applyEntities, bottomGenres, rankDeck, topGenres, decayTaste, decayAff, ENTITY_DELTAS, entityStarDelta, LIKE_DELTA, PASS_DELTA, starDelta } from './lib/taste'
 
-type Screen = 'deck' | 'watchlist' | 'watched'
+type Screen = 'deck' | 'watchlist' | 'watched' | 'mirror'
 type Filter = 'all' | MediaType
 type Status = 'loading' | 'ready' | 'error'
 
@@ -80,6 +82,7 @@ export default function App() {
   const [undo, setUndo] = useState<{ card: Title; action: 'like' | 'pass' | 'watched'; delta: number } | null>(null)
   const undoTimer = useRef<number | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [matchOpen, setMatchOpen] = useState(false)
 
   // Latest taste read inside load() via a ref, so learning doesn't trigger a
   // refetch on every swipe — it applies on the next deck (filter change / fresh
@@ -404,17 +407,21 @@ export default function App() {
           )
         ) : screen === 'watchlist' ? (
           <Watchlist items={watchlist} onOpen={openDetail} onRemove={toggleSave} />
-        ) : (
+        ) : screen === 'watched' ? (
           <Watched items={watched} onRate={rate} onRemove={removeWatched} onOpen={openDetail}
             likes={likes} dislikes={dislikes} onTaste={toggleTaste} onResetTaste={resetTaste} />
+        ) : (
+          <Mirror taste={taste} affinity={affinity} watched={watched} watchlist={watchlist} seenCount={seen.length}
+            onPivot={deckFromTag} onStartMatch={() => setMatchOpen(true)} onGoSwipe={() => setScreen('deck')} />
         )}
       </main>
 
       {/* Bottom nav */}
-      <nav style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(11,11,18,0.9)', backdropFilter: 'blur(10px)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <nav style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(11,11,18,0.9)', backdropFilter: 'blur(10px)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <NavBtn active={screen === 'deck'} onClick={() => setScreen('deck')} label="Discover" icon="discover" />
         <NavBtn active={screen === 'watchlist'} onClick={() => setScreen('watchlist')} label="Watchlist" icon="bookmark" badge={watchlist.length} />
         <NavBtn active={screen === 'watched'} onClick={() => setScreen('watched')} label="Watched" icon="eye" badge={watched.length} />
+        <NavBtn active={screen === 'mirror'} onClick={() => setScreen('mirror')} label="Mirror" icon="sparkle" />
       </nav>
 
       {screen === 'deck' && undo && (
@@ -435,6 +442,7 @@ export default function App() {
       {ratingFor && <RatingSheet t={ratingFor} onRate={s => { rate(ratingFor, s); setRatingFor(null) }} onClose={() => setRatingFor(null)} />}
       {!onboarded && <Onboarding onDone={() => setOnboarded(true)} />}
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      {matchOpen && <MatchMode deck={deck} onClose={() => setMatchOpen(false)} onOpenTitle={t => { setMatchOpen(false); openDetail(t) }} />}
     </div>
   )
 }
@@ -457,7 +465,7 @@ function Centered({ icon, title, sub, action }: {
   )
 }
 
-function NavBtn({ active, onClick, label, icon, badge }: { active: boolean; onClick: () => void; label: string; icon: 'discover' | 'bookmark' | 'eye'; badge?: number }) {
+function NavBtn({ active, onClick, label, icon, badge }: { active: boolean; onClick: () => void; label: string; icon: 'discover' | 'bookmark' | 'eye' | 'sparkle'; badge?: number }) {
   return (
     <button onClick={onClick} aria-current={active ? 'page' : undefined}
       style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '9px 0 8px', cursor: 'pointer', background: 'transparent', border: 'none', color: active ? '#fff' : 'rgba(255,255,255,0.45)' }}>
