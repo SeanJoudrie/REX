@@ -35,7 +35,10 @@ const MOVIE_GENRES: Record<number, string> = { 28: "Action", 12: "Adventure", 16
 const TV_GENRES: Record<number, string> = { 10759: "Action & Adventure", 16: "Animation", 35: "Comedy", 80: "Crime", 99: "Documentary", 18: "Drama", 10751: "Family", 10762: "Kids", 9648: "Mystery", 10763: "News", 10764: "Reality", 10765: "Sci-Fi & Fantasy", 10766: "Soap", 10767: "Talk", 10768: "War & Politics", 37: "Western" };
 const nameToId = (m: Record<number, string>) => Object.fromEntries(Object.entries(m).map(([k, v]) => [v.toLowerCase(), Number(k)])) as Record<string, number>;
 const MOVIE_NAME = nameToId(MOVIE_GENRES);
-const TV_NAME = nameToId(TV_GENRES);
+// TMDB TV genres use combined names ("Sci-Fi & Fantasy", "Action & Adventure"),
+// so the client's movie-style names would silently fail to map — alias the
+// clean supersets so a "Sci-Fi" filter actually filters TV too.
+const TV_NAME: Record<string, number> = { ...nameToId(TV_GENRES), "sci-fi": 10765, "fantasy": 10765, "action": 10759, "adventure": 10759, "war": 10768 };
 
 const PROVIDERS: Record<string, number> = { "netflix": 8, "disney+": 337, "disney plus": 337, "hulu": 15, "max": 1899, "hbo max": 384, "prime video": 9, "amazon prime video": 9, "apple tv+": 350, "paramount+": 531, "peacock": 386 };
 
@@ -183,6 +186,10 @@ Deno.serve(async (req: Request) => {
       const isMovie = type === "movie";
       const NAME = isMovie ? MOVIE_NAME : TV_NAME;
       const gid = NAME[genreName];
+      // A hard genre filter that this media type can't express (e.g. Horror on
+      // TV) must skip the type — otherwise it returns UNFILTERED rows that
+      // pollute the filtered deck.
+      if (genreName && !gid) continue;
       const withIds = gid ? String(gid) : (withList.map((n) => NAME[n.toLowerCase()]).filter(Boolean).join("|") || undefined);
       const withoutIds = withoutList.map((n) => NAME[n.toLowerCase()]).filter(Boolean).join(",") || undefined;
       const params = discoverParams(type, { region, withIds, withoutIds, year, actorId, providerId, sort, page, pivot });

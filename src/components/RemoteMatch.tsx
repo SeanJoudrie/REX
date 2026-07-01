@@ -27,11 +27,13 @@ export default function RemoteMatch({ deck, myTaste, onOpenTitle, onExit }: {
   const [role, setRole] = useState<Role>('host')
   const [code, setCode] = useState('')
   const [joinInput, setJoinInput] = useState('')
-  const [name, setName] = useState('')
+  // Remembered across sessions — also names your Mirror taste code.
+  const [name, setName] = useState(() => { try { return localStorage.getItem('rex_name') ?? '' } catch { return '' } })
   const [size, setSize] = useState(30)
   const [room, setRoom] = useState<Room | null>(null)
   const [idx, setIdx] = useState(0)
   const [err, setErr] = useState('')
+  const [lost, setLost] = useState('') // room vanished mid-game (peer left / TTL)
   const [busy, setBusy] = useState(false)
   const [popup, setPopup] = useState<Title | null>(null)
   const [matches, setMatches] = useState<Title[]>([])
@@ -45,8 +47,10 @@ export default function RemoteMatch({ deck, myTaste, onOpenTitle, onExit }: {
   const peer = room ? (role === 'host' ? room.guest : room.host) : null
 
   // ── room lifecycle ─────────────────────────────────────────────────────────
+  const rememberName = () => { try { if (name.trim()) localStorage.setItem('rex_name', name.trim()) } catch { /* private mode */ } }
   const create = async () => {
     setBusy(true); setErr('')
+    rememberName()
     const snapshot = deck.slice(0, size)
     const r = await createRoom(snapshot, me())
     setBusy(false)
@@ -57,26 +61,35 @@ export default function RemoteMatch({ deck, myTaste, onOpenTitle, onExit }: {
     const c = normalizeCode(joinInput)
     if (c.length !== 4) { setErr('Enter the 4-character code.'); return }
     setBusy(true); setErr('')
+    rememberName()
     const r = await joinRoom(c, me())
     setBusy(false)
     if (isErr(r)) { setErr(r.error); return }
     setRole('guest'); setCode(c); setRoom(r); setStage('swiping')
   }
 
-  // Poll: push my state, pull the room. Runs while connected.
+  // Poll: push my state, pull the room. Runs while connected. A room that
+  // stops resolving (peer left, server cleanup) is surfaced instead of leaving
+  // the player swiping into the void.
   useEffect(() => {
-    if (!code || (stage !== 'waiting' && stage !== 'swiping' && stage !== 'summary')) return
+    if (!code || lost || (stage !== 'waiting' && stage !== 'swiping' && stage !== 'summary')) return
     let alive = true
+    let misses = 0
     const tick = async () => {
       const r = await syncRoom(code, role, me())
-      if (!alive || isErr(r)) return
+      if (!alive) return
+      if (isErr(r)) {
+        if (/closed|not found/i.test(r.error) || ++misses >= 4) setLost(r.error)
+        return
+      }
+      misses = 0
       setRoom(r)
       if (stage === 'waiting' && r.guest) setStage('swiping') // guest arrived → go
     }
     tick()
     const h = window.setInterval(tick, POLL_MS)
     return () => { alive = false; window.clearInterval(h) }
-  }, [code, role, stage, me])
+  }, [code, role, stage, me, lost])
 
   // New matches → celebrate (Tinder pop-up) + keep the running list.
   useEffect(() => {
@@ -198,10 +211,19 @@ export default function RemoteMatch({ deck, myTaste, onOpenTitle, onExit }: {
     )
   }
 
+  // Genres BOTH players demonstrably lean into — the "why you two matched" line.
+  const sharedWhy = (t: Title): string[] =>
+    peer ? t.genres.filter(g => (myTaste[g]?.w ?? 0) > 0.1 && ((peer.taste as TasteVec)[g]?.w ?? 0) > 0.1) : []
+
   // swiping + summary share the live match pop-up + running tally
   const remaining = sharedDeck.slice(idx)
   return (
     <div style={{ width: '100%', maxWidth: 440, margin: '0 auto' }}>
+      {lost && (
+        <div role="alert" style={{ margin: '0 0 10px', padding: '9px 12px', borderRadius: 12, fontSize: 12.5, fontWeight: 700, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)', color: '#fca5a5', textAlign: 'center' }}>
+          Connection lost — {lost} Your matches so far are below.
+        </div>
+      )}
       {stage === 'swiping' && (
         <>
           <div style={{ textAlign: 'center', marginBottom: 8, fontSize: 12.5, fontWeight: 700, opacity: 0.75 }}>
@@ -220,13 +242,13 @@ export default function RemoteMatch({ deck, myTaste, onOpenTitle, onExit }: {
           onOpenTitle={onOpenTitle} onExit={onExit} />
       )}
 
-      {popup && <MatchPopup title={popup} peerName={peerName} onKeep={dismissPopup} />}
+      {popup && <MatchPopup title={popup} peerName={peerName} shared={sharedWhy(popup)} onKeep={dismissPopup} />}
     </div>
   )
 }
 
 // ── pieces ─────────────────────────────────────────────────────────────────
-function MatchPopup({ title, peerName, onKeep }: { title: Title; peerName: string; onKeep: () => void }) {
+function MatchPopup({ title, peerName, shared, onKeep }: { title: Title; peerName: string; shared: string[]; onKeep: () => void }) {
   return (
     <div className="rex-fade" style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, background: 'rgba(11,11,18,0.9)', backdropFilter: 'blur(4px)' }}>
       <div style={{ fontSize: 34, fontWeight: 900, letterSpacing: '0.02em', color: '#86efac' }}>It's a Match!</div>
@@ -235,6 +257,11 @@ function MatchPopup({ title, peerName, onKeep }: { title: Title; peerName: strin
         <Poster src={title.poster} />
       </div>
       <div style={{ fontSize: 18, fontWeight: 800, textAlign: 'center' }}>{title.title}</div>
+      {shared.length > 0 && (
+        <div style={{ fontSize: 12.5, fontWeight: 700, padding: '6px 12px', borderRadius: 999, background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.35)', color: '#86efac' }}>
+          You both lean {shared.join(' · ')}
+        </div>
+      )}
       <button onClick={onKeep} style={{ ...primary, maxWidth: 260 }}>Keep swiping</button>
     </div>
   )

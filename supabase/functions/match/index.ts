@@ -71,6 +71,11 @@ Deno.serve(async (req: Request) => {
     const action = String(body.action || "");
 
     if (action === "create") {
+      // Opportunistic TTL: purge rooms idle >24h so codes recycle and the
+      // table can't grow unboundedly. Fire-and-forget — no cron needed here.
+      rest(`match_rooms?updated_at=lt.${new Date(Date.now() - 86_400_000).toISOString()}`, {
+        method: "DELETE", headers: { Prefer: "return=minimal" },
+      }).catch(() => {});
       const deck = Array.isArray(body.deck) ? body.deck.slice(0, 120) : null;
       if (!deck) return json({ error: "no deck" }, 400);
       const host = cleanPlayer(body.player);

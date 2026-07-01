@@ -109,7 +109,8 @@ function toTitle(raw: unknown): Title | null {
     mediaType,
     title,
     year: Number.isFinite(Number(r.year)) ? Number(r.year) : 0,
-    genres: stringArray(r.genres),
+    genres: [...new Set(stringArray(r.genres))], // dupes would multiply taste deltas
+
     overview: typeof r.overview === 'string' ? r.overview : '',
     providers: normalizeProviders(r.providers),
     rating: Number.isFinite(Number(r.rating)) ? Number(r.rating) : 0,

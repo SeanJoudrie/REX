@@ -7,6 +7,7 @@ import Icon from './Icon'
 import { track } from '../lib/metrics'
 import { decodeTaste } from '../lib/tasteShare'
 import type { TastePayload } from '../lib/tasteShare'
+import { tasteCompat } from '../lib/taste'
 import type { TasteVec } from '../lib/taste'
 import RemoteMatch from './RemoteMatch'
 
@@ -33,6 +34,8 @@ export default function MatchMode({ deck, myTaste, onClose, onOpenTitle, onBlend
   const [idx, setIdx] = useState(0)
   const [code, setCode] = useState('')
   const [codeErr, setCodeErr] = useState(false)
+  // Decoded-but-not-yet-applied friend taste: show WHY you match before blending.
+  const [preview, setPreview] = useState<TastePayload | null>(null)
 
   const gameDeck = useRef<Title[]>([])
   const likes = useRef<string[][]>([]) // likes[player] = [titleKey, …]
@@ -74,7 +77,7 @@ export default function MatchMode({ deck, myTaste, onClose, onOpenTitle, onBlend
   const tryBlend = () => {
     const p = decodeTaste(code)
     if (!p) { setCodeErr(true); return }
-    onBlend(p)
+    setPreview(p)
   }
 
   const record = (t: Title, liked: boolean) => {
@@ -151,13 +154,19 @@ export default function MatchMode({ deck, myTaste, onClose, onOpenTitle, onBlend
             <div style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.5, marginBottom: 10 }}>
               Paste a friend's taste code (they copy it from their Mirror) to browse a deck ranked for <strong style={{ color: '#fff' }}>both</strong> of you.
             </div>
-            <textarea value={code} onChange={e => { setCode(e.target.value); setCodeErr(false) }} placeholder="REX1:…" rows={2}
-              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', fontSize: 12.5, fontFamily: 'ui-monospace, monospace', padding: '10px 12px', borderRadius: 12, outline: 'none', background: 'rgba(255,255,255,0.06)', color: '#fff', border: `1px solid ${codeErr ? '#ef4444' : 'rgba(255,255,255,0.16)'}` }} />
-            {codeErr && <div style={{ marginTop: 6, fontSize: 12, color: '#fca5a5', fontWeight: 600 }}>That doesn't look like a valid taste code.</div>}
-            <button onClick={tryBlend} disabled={!code.trim()}
-              style={{ marginTop: 10, width: '100%', padding: '12px', borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: code.trim() ? 'pointer' : 'default', background: 'rgba(56,189,248,0.16)', color: '#7dd3fc', border: '1px solid rgba(56,189,248,0.4)' }}>
-              Blend our taste
-            </button>
+            {!preview ? (
+              <>
+                <textarea value={code} onChange={e => { setCode(e.target.value); setCodeErr(false) }} placeholder="REX1:…" rows={2}
+                  style={{ width: '100%', boxSizing: 'border-box', resize: 'none', fontSize: 12.5, fontFamily: 'ui-monospace, monospace', padding: '10px 12px', borderRadius: 12, outline: 'none', background: 'rgba(255,255,255,0.06)', color: '#fff', border: `1px solid ${codeErr ? '#ef4444' : 'rgba(255,255,255,0.16)'}` }} />
+                {codeErr && <div style={{ marginTop: 6, fontSize: 12, color: '#fca5a5', fontWeight: 600 }}>That doesn't look like a valid taste code.</div>}
+                <button onClick={tryBlend} disabled={!code.trim()}
+                  style={{ marginTop: 10, width: '100%', padding: '12px', borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: code.trim() ? 'pointer' : 'default', background: 'rgba(56,189,248,0.16)', color: '#7dd3fc', border: '1px solid rgba(56,189,248,0.4)' }}>
+                  Blend our taste
+                </button>
+              </>
+            ) : (
+              <CompatCard me={myTaste} friend={preview} onConfirm={() => onBlend(preview)} onCancel={() => setPreview(null)} />
+            )}
           </div>
         )}
 
@@ -193,6 +202,46 @@ export default function MatchMode({ deck, myTaste, onClose, onOpenTitle, onBlend
 
         {mode === 'local' && stage === 'results' && <Results matches={matches()} players={names.current.length} onOpenTitle={onOpenTitle} onAgain={() => setStage('setup')} onClose={close} />}
       </main>
+    </div>
+  )
+}
+
+/** The "why you two match" reveal — shown between pasting a taste code and
+ *  blending, so the number and the shared loves land as a moment, not a toggle. */
+function CompatCard({ me, friend, onConfirm, onCancel }: {
+  me: TasteVec; friend: TastePayload; onConfirm: () => void; onCancel: () => void
+}) {
+  const c = tasteCompat(me, friend.taste)
+  const who = friend.name || 'Your friend'
+  return (
+    <div style={{ textAlign: 'left', padding: '14px 16px', borderRadius: 16, background: 'rgba(56,189,248,0.10)', border: '1px solid rgba(56,189,248,0.4)' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.6 }}>You + {who}</div>
+      <div style={{ marginTop: 6, fontSize: 26, fontWeight: 900, color: '#7dd3fc' }}>
+        {c.score != null ? `${c.score}% taste match` : 'Still learning you two'}
+      </div>
+      {c.shared.length > 0 && (
+        <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.5 }}>
+          You both love <strong style={{ color: '#fff' }}>{c.shared.join(' · ')}</strong>
+        </div>
+      )}
+      {c.friction.length > 0 && (
+        <div style={{ marginTop: 4, fontSize: 12.5, opacity: 0.7, lineHeight: 1.5 }}>
+          You split on {c.friction.join(' and ')} — the blend keeps those out.
+        </div>
+      )}
+      {c.score == null && c.shared.length === 0 && (
+        <div style={{ marginTop: 8, fontSize: 12.5, opacity: 0.7, lineHeight: 1.5 }}>
+          Not enough overlapping swipes yet to score it — blend anyway and the deck leans on what you rate from here.
+        </div>
+      )}
+      <button onClick={onConfirm}
+        style={{ marginTop: 14, width: '100%', padding: '12px', borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: 'pointer', background: '#22c55e', color: '#06210f', border: 'none' }}>
+        Blend our deck
+      </button>
+      <button onClick={onCancel}
+        style={{ marginTop: 8, width: '100%', padding: '9px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.55)', border: 'none' }}>
+        Back
+      </button>
     </div>
   )
 }

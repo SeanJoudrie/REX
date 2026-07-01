@@ -94,8 +94,12 @@ export default function Mirror({ taste, affinity, watched, watchlist, seenCount,
   }
 
   const copyCode = async () => {
+    // Carry the name (set in remote Match) so the friend's blend banner and
+    // compatibility card say who this is, not "a friend".
+    let name: string | undefined
+    try { name = localStorage.getItem('rex_name') || undefined } catch { /* private mode */ }
     try {
-      await navigator.clipboard.writeText(encodeTaste({ v: 1, taste, likes, dislikes }))
+      await navigator.clipboard.writeText(encodeTaste({ v: 1, name, taste, likes, dislikes }))
       setCopied(true); window.setTimeout(() => setCopied(false), 1800)
     } catch { /* clipboard blocked */ }
   }

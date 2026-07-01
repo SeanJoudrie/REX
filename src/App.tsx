@@ -18,7 +18,7 @@ import Rex from './components/Rex'
 import { track } from './lib/metrics'
 import type { TastePayload } from './lib/tasteShare'
 import type { TasteVec, EntityAff } from './lib/taste'
-import { applySignal, applyEntities, bottomGenres, rankDeck, topGenres, decayTaste, decayAff, mergeTaste, ENTITY_DELTAS, entityStarDelta, LIKE_DELTA, PASS_DELTA, starDelta } from './lib/taste'
+import { applySignal, applyEntities, bottomGenres, rankDeck, topGenres, topEntityTags, tasteCompat, decayTaste, decayAff, mergeTaste, ENTITY_DELTAS, entityStarDelta, LIKE_DELTA, PASS_DELTA, starDelta } from './lib/taste'
 
 type Screen = 'deck' | 'watchlist' | 'watched' | 'mirror'
 type Filter = 'all' | MediaType
@@ -62,6 +62,7 @@ export default function App() {
   // appended; loadingMore guards against concurrent appends; atEnd latches when
   // a page yields nothing new.
   const pageRef = useRef(1)
+  const fetchSeq = useRef(0) // appends since load — every 3rd is an exploration page
   const loadingMore = useRef(false)
   const poolRef = useRef<Title[]>([])
   const [atEnd, setAtEnd] = useState(false)
@@ -82,7 +83,9 @@ export default function App() {
   const [detail, setDetail] = useState<Title | null>(null)
   const [pivot, setPivot] = useState<{ type: string; id?: number; name?: string; label: string } | null>(null)
   const [ratingFor, setRatingFor] = useState<Title | null>(null)
-  const [undo, setUndo] = useState<{ card: Title; action: 'like' | 'pass' | 'watched'; delta: number } | null>(null)
+  // tags/ebase capture the entity-affinity write of an informed swipe so undo
+  // can reverse the WHOLE learning step, not just the genre delta.
+  const [undo, setUndo] = useState<{ card: Title; action: 'like' | 'pass' | 'watched'; delta: number; tags?: Tag[]; ebase?: number } | null>(null)
   const undoTimer = useRef<number | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [matchOpen, setMatchOpen] = useState(false)
@@ -108,6 +111,8 @@ export default function App() {
   // batch / reopen).
   const tasteRef = useRef(taste)
   useEffect(() => { tasteRef.current = taste }, [taste])
+  const affinityRef = useRef(affinity)
+  useEffect(() => { affinityRef.current = affinity }, [affinity])
 
   // Ranking vector: my taste, or a consensus blend with a friend's in blend mode.
   const rankVec = () => {
@@ -144,31 +149,51 @@ export default function App() {
     setStatus('loading')
     setAtEnd(false)
     pageRef.current = 1
+    fetchSeq.current = 0
     const ctrl = new AbortController()
     fetchDeck(buildQuery(1), ctrl.signal)
-      .then(d => { setPool(rankDeck(d, rankVec())); setStatus('ready') })
+      .then(d => { setPool(rankDeck(d, rankVec(), affinityRef.current)); setStatus('ready') })
       .catch((e: unknown) => { if ((e as Error)?.name !== 'AbortError') setStatus('error') })
     return () => ctrl.abort()
   }, [buildQuery])
   useEffect(() => load(), [load])
 
   // Append the next page, deduped against what's already pooled. A page with no
-  // new titles latches atEnd so we stop hitting the proxy.
+  // new titles latches atEnd so we stop hitting the proxy. Every 3rd append on
+  // the default deck is an EXPLORATION page seeded from a top learned entity
+  // (a "Denzel page", an "A24 page") so the pool follows the user's actual
+  // taste instead of only TMDB popularity order.
   const loadMore = useCallback(() => {
     if (loadingMore.current || atEnd) return
     loadingMore.current = true
+    fetchSeq.current += 1
     const next = pageRef.current + 1
-    fetchDeck(buildQuery(next))
-      .then(d => {
+    const vanilla = !pivot && !actor && !service && !genre && !year && sort === 'popular' && !blendRef.current
+    const seeds = vanilla && fetchSeq.current % 3 === 0 ? topEntityTags(affinityRef.current) : []
+    const seed = seeds.length ? seeds[Math.floor(Math.random() * Math.min(seeds.length, 5))] : null
+
+    const append = (q: DeckQuery, isExplore: boolean): Promise<void> =>
+      fetchDeck(q).then(d => {
         const have = new Set(poolRef.current.map(keyOf))
         const fresh = d.filter(t => !have.has(keyOf(t)))
-        if (!fresh.length) { setAtEnd(true); return }
-        pageRef.current = next
-        setPool(prev => [...prev, ...rankDeck(fresh, rankVec())])
+        if (!fresh.length) {
+          // A dry exploration page falls back to the regular cursor; only a dry
+          // REGULAR page means the deck is truly exhausted.
+          if (isExplore) return append(buildQuery(next), false)
+          setAtEnd(true)
+          return
+        }
+        if (!isExplore) pageRef.current = next
+        setPool(prev => [...prev, ...rankDeck(fresh, rankVec(), affinityRef.current)])
       })
+
+    const q: DeckQuery = seed
+      ? { ...buildQuery(1), pivot: { type: seed.type, id: seed.id, name: seed.name }, page: 1 + Math.floor(Math.random() * 2) }
+      : buildQuery(next)
+    append(q, !!seed)
       .catch(() => { /* keep the current pool; the manual Fresh batch can retry */ })
       .finally(() => { loadingMore.current = false })
-  }, [buildQuery, atEnd])
+  }, [buildQuery, atEnd, pivot, actor, service, genre, year, sort])
 
   // Cold-open a shared deep link (#/t/:type/:id): strip the hash, fetch the
   // title, open its detail sheet.
@@ -217,8 +242,8 @@ export default function App() {
 
   const markSeen = (k: string) => setSeen(s => (s.includes(k) ? s : [...s, k]))
 
-  const showUndo = (card: Title, action: 'like' | 'pass' | 'watched', delta: number) => {
-    setUndo({ card, action, delta })
+  const showUndo = (card: Title, action: 'like' | 'pass' | 'watched', delta: number, tags?: Tag[], ebase?: number) => {
+    setUndo({ card, action, delta, tags, ebase })
     if (undoTimer.current) window.clearTimeout(undoTimer.current)
     undoTimer.current = window.setTimeout(() => setUndo(null), 4500)
   }
@@ -242,7 +267,7 @@ export default function App() {
     setTaste(v => applySignal(v, t.genres, gd))
     if (tags) setAffinity(a => applyEntities(a, tags, ENTITY_DELTAS.likeInformed))
     track('like'); track('save')
-    showUndo(t, 'like', gd)
+    showUndo(t, 'like', gd, tags, tags ? ENTITY_DELTAS.likeInformed : undefined)
     maybeDoneNudge(t)
   }
   const pass = (t: Title) => {
@@ -252,7 +277,7 @@ export default function App() {
     setTaste(v => applySignal(v, t.genres, gd))
     if (tags) setAffinity(a => applyEntities(a, tags, ENTITY_DELTAS.passInformed))
     track('pass')
-    showUndo(t, 'pass', gd)
+    showUndo(t, 'pass', gd, tags, tags ? ENTITY_DELTAS.passInformed : undefined)
   }
 
   const markWatched = (t: Title) => {
@@ -266,15 +291,16 @@ export default function App() {
   }
 
   // Reverse the last swipe: undo the list change, the seen key, the taste delta,
-  // and re-top the card so it returns to the deck.
+  // the entity-affinity delta, and re-top the card so it returns to the deck.
   const doUndo = () => {
     if (!undo) return
-    const { card, action, delta } = undo
+    const { card, action, delta, tags, ebase } = undo
     const k = keyOf(card)
     setSeen(s => s.filter(x => x !== k))
     if (action === 'like') setWatchlist(w => w.filter(x => keyOf(x) !== k))
     if (action === 'watched') { setWatched(list => list.filter(x => keyOf(x) !== k)); setRatingFor(r => (r && keyOf(r) === k ? null : r)) }
-    if (delta) setTaste(v => applySignal(v, card.genres, -delta))
+    if (delta) setTaste(v => applySignal(v, card.genres, -delta, -1))
+    if (tags && ebase) setAffinity(a => applyEntities(a, tags, -ebase, -1))
     setPool(p => [card, ...p.filter(x => keyOf(x) !== k)])
     if (undoTimer.current) window.clearTimeout(undoTimer.current)
     setUndo(null)
@@ -286,7 +312,7 @@ export default function App() {
     const contr = (s: number) => (s ? starDelta(s) : 0) // unrated counts as neutral
     const d = contr(stars) - contr(prev)
     track('rate')
-    if (d) setTaste(v => applySignal(v, t.genres, d)) // stars push hardest
+    if (d) setTaste(v => applySignal(v, t.genres, d, prev ? 0 : 1)) // stars push hardest; a re-rate adjusts, it isn't a new sample
     // Entity affinity from the rating (the heaviest signal) — use cached tags or
     // fetch them once.
     const eb = entityStarDelta(stars) - entityStarDelta(prev)
@@ -370,6 +396,9 @@ export default function App() {
 
   const filtersActive = filter !== 'all' || genre !== null || year !== null || sort !== 'popular' || service !== null || actor !== null
 
+  // "Why you two matched" — headline number + shared loves for the blend banner.
+  const blendCompat = useMemo(() => (blend ? tasteCompat(taste, blend.taste) : null), [blend, taste])
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', maxWidth: 640, margin: '0 auto' }}>
       {/* Top bar */}
@@ -438,6 +467,7 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '0 16px 6px', padding: '8px 12px', borderRadius: 12, background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.35)' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             <Icon name="users" size={15} /> Blending with <span style={{ color: '#7dd3fc' }}>{blend.name || 'a friend'}</span>
+            {blendCompat?.score != null && <span style={{ opacity: 0.75 }}>· {blendCompat.score}% match</span>}
           </span>
           <button onClick={() => setBlend(null)} aria-label="Clear blend"
             style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.18)' }}>
@@ -503,9 +533,11 @@ export default function App() {
         <NavBtn active={screen === 'mirror'} onClick={() => setScreen('mirror')} label="Mirror" icon="sparkle" />
       </nav>
 
-      {screen === 'deck' && undo && !doneNudge && (
-        <button onClick={doUndo} aria-label={`Undo ${undo.action}`}
-          style={{ position: 'fixed', bottom: 84, left: '50%', transform: 'translateX(-50%)', zIndex: 40, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 999, cursor: 'pointer',
+      {/* Stacks above the "you're done" nudge when both are up — the first save
+          of a session must stay undoable. */}
+      {screen === 'deck' && undo && (
+        <button onClick={doUndo} aria-label={`Undo ${undo.action === 'like' ? 'save' : undo.action === 'watched' ? 'watched' : 'pass'}`}
+          style={{ position: 'fixed', bottom: doneNudge ? 168 : 84, left: '50%', transform: 'translateX(-50%)', zIndex: 40, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 999, cursor: 'pointer',
             background: 'rgba(22,22,32,0.96)', color: '#fff', border: '1px solid rgba(255,255,255,0.22)', fontSize: 13.5, fontWeight: 700, boxShadow: '0 8px 24px -8px rgba(0,0,0,0.7)' }}>
           <Icon name="undo" size={16} /> Undo {undo.action === 'like' ? 'save' : undo.action === 'watched' ? 'watched' : 'pass'}
         </button>
@@ -551,7 +583,16 @@ export default function App() {
 
       {detail && <Detail t={detail} saved={isSaved(detail)} reason={whyThis(detail)} onClose={() => setDetail(null)} onToggleSave={toggleSave} onPivot={deckFromTag} />}
       {ratingFor && <RatingSheet t={ratingFor} onRate={s => { rate(ratingFor, s); setRatingFor(null) }} onClose={() => setRatingFor(null)} />}
-      {!onboarded && <Onboarding onDone={() => setOnboarded(true)} />}
+      {!onboarded && <Onboarding onDone={picks => {
+        // Cold-start seed: picked genres become taste-prefs AND a warm vector
+        // (w=0.45, n=3 — enough for topGenres to bias the very first fetch),
+        // so a new user's deck is personal from swipe one.
+        if (picks.length) {
+          setLikes(l => Array.from(new Set([...l, ...picks])))
+          setTaste(v => picks.reduce((acc, g) => applySignal(applySignal(applySignal(acc, [g], 0.15), [g], 0.15), [g], 0.15), v))
+        }
+        setOnboarded(true)
+      }} />}
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
       {matchOpen && <MatchMode deck={deck} myTaste={taste}
         onClose={() => {

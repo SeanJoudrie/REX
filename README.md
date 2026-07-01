@@ -118,14 +118,19 @@ Launched from the Mirror, three ways to decide with other people:
 - **Mode A — Same phone (pass-and-swipe):** 2–4 players take turns swiping the *same*
   snapshotted deck behind blind handoff screens; a title everyone liked is a match.
   Fully ephemeral.
-- **Mode B — Blend:** paste a friend’s **taste code** and the main deck re-ranks for *both*
-  of you (consensus blend: rewards what you both like, drops what either dislikes), with a
-  “Blending with…” banner. Zero infrastructure.
+- **Mode B — Blend:** paste a friend’s **taste code** and REX first shows a
+  **compatibility card** — “You + Alex · 78% taste match · you both love Sci-Fi ·
+  Thriller” (confidence-weighted cosine over your genre vectors, with the friction
+  points the blend will avoid) — then re-ranks the main deck for *both* of you
+  (consensus blend: rewards what you both like, drops what either dislikes), with a
+  “Blending with Alex · 78% match” banner. Zero infrastructure.
 - **Mode C — Two phones (remote, real-time):** connect by a **4-character code**, both
   swipe one shared deck, and a live **“It’s a Match!”** Tinder-style pop-up fires the
-  instant you both like a title. Round length is selectable (Quick 15 / Standard 30 /
-  Marathon 75). The exit summary shows your matches **plus** “recommended for you both”
-  (blended recs) when overlap is thin.
+  instant you both like a title — including *why* (“You both lean Sci-Fi · Thriller”).
+  Round length is selectable (Quick 15 / Standard 30 / Marathon 75). The exit summary
+  shows your matches **plus** “recommended for you both” (blended recs) when overlap is
+  thin. A room that dies mid-round (peer left, TTL) is surfaced honestly instead of
+  swiping into the void.
 
 ### The “you’re done” moment
 After a save (the first of a session, then occasionally) REX surfaces a calm card — *“You’ve
@@ -145,8 +150,10 @@ never leaves your device; it exists so you (and the team) can tell whether the
 recommendations are actually landing.
 
 ### Onboarding & persistence
-A one-time soft launch explains the three swipes. Everything (watchlist, watched, ratings,
-learned taste, onboarding state) persists in `localStorage` — no account required.
+A one-time soft launch explains the three swipes, then a quick **taste picker** seeds
+the algorithm (picked genres become taste-prefs *and* a warm vector) so the very first
+deck is already personal. Everything (watchlist, watched, ratings, learned taste,
+onboarding state) persists in `localStorage` — no account required.
 
 ### Backup & restore
 In Settings:
@@ -175,8 +182,14 @@ runs a database scan.
   actors 1.2× (decayed by billing order), studios 1.1×.
 - **Value matrix:** distinct deltas for like vs. informed-like vs. pass vs. informed-pass
   vs. each star rating — an impulse right-swipe counts less than a deliberate one.
-- **Ranking (`rankDeck`):** `0.55 · taste + 0.35 · quality + 0.10 · serendipity`, then a
-  greedy **genre-diversity** pass so the same genre isn’t served back-to-back.
+- **Ranking (`rankDeck`):** `0.62 · taste + 0.24 · quality + 0.14 · entity-affinity`
+  (taste is peak-sensitive — one loved genre lifts a title, one hated genre sinks it),
+  then a greedy **genre-diversity** pass so the same genre isn’t served back-to-back,
+  with a **wildcard slot** every 8th card (best remaining quality regardless of taste)
+  so serendipity can’t be sorted away.
+- **Exploration pages:** on the default feed, every 3rd fetched page is seeded from a
+  top learned entity — a “Denzel page,” an “A24 page” — so the candidate pool follows
+  your taste, not just TMDB popularity order.
 - **Decay:** lazy EWMA decay applied on load (taste drifts over time so the echo chamber
   can’t calcify).
 - **“Why this?”** and the **Mirror** read directly from these structures.
@@ -309,10 +322,12 @@ https://seanjoudrie.github.io/REX/.
 
 ## Known limitations & roadmap
 
-Tracked in [`docs/ROADMAP.md`](./docs/ROADMAP.md). Highlights still open:
+Tracked in [`docs/ROADMAP.md`](./docs/ROADMAP.md); a full audit (measured algorithm
+findings + prioritized blueprint) lives in [`docs/AUDIT.md`](./docs/AUDIT.md).
+Highlights still open:
 
-- **Remote match:** true *endless* paging (Marathon is currently a large fixed deck), room
-  TTL cleanup, and disconnect/presence handling.
+- **Remote match:** true *endless* paging (Marathon is currently a large fixed deck) and
+  richer presence handling (rooms now TTL-purge after 24 h and a lost room is surfaced).
 - **Engine:** optionally enrich every deck card so poster-only swipes also learn entities
   (cost/latency tradeoff); a fuller multi-entity `rankDeck` v2.
 - **Mirror:** long-press a chip to tune (more/less/mute); a shareable read-only Mirror link.

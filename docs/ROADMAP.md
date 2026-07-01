@@ -2,6 +2,13 @@
 
 Running list of things identified but not yet (fully) built, so nothing is lost.
 Checked items are done; unchecked are open with notes.
+**See also [`AUDIT.md`](./AUDIT.md)** — full-app audit with measured algorithm
+findings; its "Shipped in this branch" list covers: rankDeck v2 (peak-sensitive
+taste, entityFit term, wildcard serendipity slots, normalized diversity
+penalty), undo-model integrity (dn through applySignal/applyEntities),
+onboarding taste picker (cold start), entity exploration pages, mergeTaste
+interpolation fix, tasteCompat + compatibility card + named taste codes +
+match reasons, lost-room handling, TV genre-filter alias fix, match_rooms TTL.
 
 ## Architecture audit
 - [x] ErrorBoundary (#8)
