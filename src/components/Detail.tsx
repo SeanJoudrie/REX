@@ -7,12 +7,12 @@ const reducedMotion = () =>
   typeof window !== 'undefined' &&
   !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
-// Deep-link the watch handoff: tapping a provider jumps to the title. Real
-// per-provider deep links come from the JustWatch data on the TMDB detail
-// response; until that's wired we hand off to a JustWatch title search, which
-// still collapses "I want this" to one tap.
+// Deep-link the watch handoff: tapping a provider jumps to THIS title's
+// JustWatch page (TMDB's watch/providers `link`), which lists every service's
+// real play link. Titles fetched before the proxy carried it fall back to a
+// title search — still one tap.
 function watchUrl(t: Title): string {
-  return `https://www.justwatch.com/us/search?q=${encodeURIComponent(t.title)}`
+  return t.watchLink ?? `https://www.justwatch.com/us/search?q=${encodeURIComponent(t.title)}`
 }
 
 const tagColor = (type: string) =>
@@ -198,6 +198,12 @@ export default function Detail({ t, saved, reason, onClose, onToggleSave, onPivo
                 ▶ {p}
               </a>
             ))}
+            {t.providers.length === 0 && (
+              <a href={watchUrl(t)} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: 13, fontWeight: 700, padding: '9px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', textDecoration: 'none' }}>
+                {t.inTheaters ? 'In theaters — check listings ↗' : 'Find where to watch ↗'}
+              </a>
+            )}
           </div>
 
           <button onClick={() => onToggleSave(t)}

@@ -17,11 +17,12 @@ const POLL_MS = 1500
 
 type Stage = 'lobby' | 'create' | 'join' | 'waiting' | 'swiping' | 'summary'
 
-export default function RemoteMatch({ deck, myTaste, onOpenTitle, onExit }: {
+export default function RemoteMatch({ deck, myTaste, onOpenTitle, onExit, onRecordMatches }: {
   deck: Title[]
   myTaste: TasteVec
   onOpenTitle: (t: Title) => void
   onExit: () => void
+  onRecordMatches: (titles: Title[], withName: string) => void
 }) {
   const [stage, setStage] = useState<Stage>('lobby')
   const [role, setRole] = useState<Role>('host')
@@ -91,21 +92,28 @@ export default function RemoteMatch({ deck, myTaste, onOpenTitle, onExit }: {
     return () => { alive = false; window.clearInterval(h) }
   }, [code, role, stage, me, lost])
 
-  // New matches → celebrate (Tinder pop-up) + keep the running list.
+  // New matches → celebrate (Tinder pop-up), keep the running list, and
+  // remember them in Mirror's "Matched together" shelf.
   useEffect(() => {
     if (!room) return
     const ms = matchesOf(room)
     setMatches(ms)
+    const fresh: Title[] = []
     for (const t of ms) {
       const k = keyOf(t)
-      if (!celebrated.current.has(k)) { celebrated.current.add(k); queue.current.push(t) }
+      if (!celebrated.current.has(k)) { celebrated.current.add(k); queue.current.push(t); fresh.push(t) }
+    }
+    if (fresh.length) {
+      const other = (role === 'host' ? room.guest?.name : room.host.name) || 'a friend'
+      onRecordMatches(fresh, other)
     }
     if (!showing.current && queue.current.length) {
       showing.current = true
       setPopup(queue.current.shift()!)
       if (navigator.vibrate) navigator.vibrate([14, 40, 14])
     }
-  }, [room])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room, role])
 
   const dismissPopup = () => {
     if (queue.current.length) { setPopup(queue.current.shift()!); if (navigator.vibrate) navigator.vibrate(14) }

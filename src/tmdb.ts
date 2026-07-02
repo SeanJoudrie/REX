@@ -113,6 +113,7 @@ function toTitle(raw: unknown): Title | null {
 
     overview: typeof r.overview === 'string' ? r.overview : '',
     providers: normalizeProviders(r.providers),
+    watchLink: typeof r.watchLink === 'string' && r.watchLink.startsWith('https://') ? r.watchLink : undefined,
     rating: Number.isFinite(Number(r.rating)) ? Number(r.rating) : 0,
     poster: typeof r.poster === 'string' ? r.poster : undefined,
     gradient,

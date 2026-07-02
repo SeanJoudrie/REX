@@ -39,9 +39,9 @@ match reasons, lost-room handling, TV genre-filter alias fix, match_rooms TTL.
       double-pulse watched, undo tick, milestone buzz every 10th save.
 - [ ] **Expanded hit-slop** on thumb controls — wrap buttons in transparent
       padding/negative margin so the tap target exceeds the visual circle.
-- [ ] **Real one-tap watch handoff** — persist per-provider deep links onto saved
-      titles (from JustWatch data on the TMDB detail response) and surface a play
-      link in the watchlist; today it's a JustWatch search.
+- [x] **Real one-tap watch handoff** — the proxy forwards TMDB's JustWatch title
+      `link` (`Title.watchLink`); Detail's provider chips deep-link to the title
+      page, with a "Find where to watch" fallback chip when providers are empty.
 
 ## Taste-graph (multi-entity) — Principal Data Architect spec
 Canonical key everywhere: `type:tmdb_id` (e.g. `person:5292`, `company:41077`).
@@ -83,12 +83,14 @@ Canonical key everywhere: `type:tmdb_id` (e.g. `person:5292`, `company:41077`).
       dimension rails (People/Studios/Themes/Genres) with confidence bars, every
       chip tappable → pivot deck, bedrock "films that define you" shelf, and a
       low-confidence "swipe N more" gate. All on-device, no fetch. (`Mirror.tsx`)
-      - [ ] **v2:** long-press a chip → tune (more/less/mute) writing affinities.
+      - [x] **v2 (tune):** long-press a rail chip → tune sheet (More / Less /
+        Mute) writing taste/affinity directly; genre mute also hard-filters.
       - [x] **v3 (share image):** fingerprint rendered to a `<canvas>` and shared
         as a PNG (`navigator.share` files, else download). Plus a copyable
         **taste code** (`lib/tasteShare.ts`) that powers remote blending.
         _Still open: shareable read-only Mirror deep link._
-      - [ ] **v2 (tune):** long-press a chip → more/less/mute writing affinities.
+      - [x] **Matched together shelf:** matches from remote / pass-the-phone
+        rounds persist (`matchHistory`, cap 50) and render in the Mirror.
 - [x] **Match Mode A — pass-the-phone** — 2–4 players swipe one snapshotted deck
       in turn (history-trapped overlay, blind handoff screens), intersection of
       right-swipes = matches, results sheet → open any match. Ephemeral, zero

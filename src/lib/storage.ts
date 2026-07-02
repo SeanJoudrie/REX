@@ -7,6 +7,19 @@ import type { TasteVec, EntityAff } from './taste'
 
 const KEY = 'rex_state_v2'
 
+/** A title two (or more) people matched on — Mirror's social memory. */
+export interface MatchRecord {
+  key: string
+  title: Title
+  /** Who it was with — a peer name or "3 players". */
+  with: string
+  at: number
+}
+
+// seen[] would otherwise grow forever (years of swipes → localStorage bloat).
+// Oldest entries evict first; anything saved/watched stays excluded via its list.
+const SEEN_CAP = 5000
+
 interface Persisted {
   /** Full title objects for right-swipes, denormalized so the watchlist renders
    *  with zero API calls. */
@@ -29,9 +42,13 @@ interface Persisted {
   tasteDecayedAt: number
   /** First-run tutorial shown? */
   onboarded: boolean
+  /** titleKey → when we last asked "did you watch it?" (snoozes the nudge). */
+  outcomeAsked: Record<string, number>
+  /** Titles matched with other people (remote or pass-the-phone rounds). */
+  matchHistory: MatchRecord[]
 }
 
-const EMPTY: Persisted = { watchlist: [], watched: [], seen: [], likes: [], dislikes: [], taste: {}, affinity: {}, tasteDecayedAt: 0, onboarded: false }
+const EMPTY: Persisted = { watchlist: [], watched: [], seen: [], likes: [], dislikes: [], taste: {}, affinity: {}, tasteDecayedAt: 0, onboarded: false, outcomeAsked: {}, matchHistory: [] }
 
 export function loadState(): Persisted {
   try {
@@ -53,7 +70,8 @@ export function loadState(): Persisted {
 }
 
 export function saveState(state: Persisted): void {
-  try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { /* quota / private mode */ }
+  const bounded = state.seen.length > SEEN_CAP ? { ...state, seen: state.seen.slice(-SEEN_CAP) } : state
+  try { localStorage.setItem(KEY, JSON.stringify(bounded)) } catch { /* quota / private mode */ }
 }
 
 /** Raw persisted JSON (for backup/export). */

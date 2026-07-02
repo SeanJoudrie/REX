@@ -49,19 +49,22 @@ export function applyEntities(aff: EntityAff, tags: Tag[] | undefined, base: num
 
 export const ENTITY_DELTAS = ENTITY_BASE
 
-/** Lazy EWMA decay so taste drifts and the echo chamber can't calcify. */
+/** Lazy EWMA decay so taste drifts and the echo chamber can't calcify.
+ *  Weights halve in ~34 days; confidence (n) decays slower (~87-day half-life)
+ *  so long-idle profiles eventually loosen up instead of staying immortally
+ *  sure about stale taste. */
 export function decayTaste(vec: TasteVec, days: number): TasteVec {
   if (days <= 0) return vec
-  const f = Math.pow(0.98, days)
+  const f = Math.pow(0.98, days), fn = Math.pow(0.992, days)
   const out: TasteVec = {}
-  for (const [k, v] of Object.entries(vec)) out[k] = { w: v.w * f, n: v.n }
+  for (const [k, v] of Object.entries(vec)) out[k] = { w: v.w * f, n: v.n * fn }
   return out
 }
 export function decayAff(aff: EntityAff, days: number): EntityAff {
   if (days <= 0) return aff
-  const f = Math.pow(0.98, days)
+  const f = Math.pow(0.98, days), fn = Math.pow(0.992, days)
   const out: EntityAff = {}
-  for (const [k, v] of Object.entries(aff)) out[k] = { ...v, w: v.w * f }
+  for (const [k, v] of Object.entries(aff)) out[k] = { ...v, w: v.w * f, n: v.n * fn }
   return out
 }
 

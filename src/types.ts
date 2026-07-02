@@ -20,6 +20,9 @@ export interface Title {
   overview: string
   /** Streaming services it's on (subscription / flatrate). */
   providers: string[]
+  /** JustWatch page for THIS title (from TMDB watch/providers) — the one-tap
+   *  watch handoff. Falls back to a title search when absent. */
+  watchLink?: string
   rating: number // 0–10, TMDB vote_average style
   /** Real poster URL when available; undefined → render a gradient. */
   poster?: string
@@ -29,6 +32,8 @@ export interface Title {
   inTheaters?: boolean
   /** Enriched taste entities (populated on the detail hydrate). */
   tags?: Tag[]
+  /** When the user saved it to the watchlist (drives the outcome nudge). */
+  addedAt?: number
 }
 
 /** A title the user has marked watched, with their private 1–5 star rating

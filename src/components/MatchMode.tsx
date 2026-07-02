@@ -20,12 +20,14 @@ type Mode = 'choose' | 'local' | 'remote'
 /** Match hub. Two ways to play: same-phone pass-and-swipe (Mode A, below) or
  *  two-phone remote real-time (RemoteMatch). onBlend hands a friend's pasted
  *  taste up so the main deck can re-rank for both of you (Mode B). */
-export default function MatchMode({ deck, myTaste, onClose, onOpenTitle, onBlend }: {
+export default function MatchMode({ deck, myTaste, onClose, onOpenTitle, onBlend, onRecordMatches }: {
   deck: Title[]
   myTaste: TasteVec
   onClose: () => void
   onOpenTitle: (t: Title) => void
   onBlend: (p: TastePayload) => void
+  /** Persist matched titles into Mirror's "Matched together" shelf. */
+  onRecordMatches: (titles: Title[], withName: string) => void
 }) {
   const [mode, setMode] = useState<Mode>('choose')
   const [stage, setStage] = useState<Stage>('setup')
@@ -66,11 +68,13 @@ export default function MatchMode({ deck, myTaste, onClose, onOpenTitle, onBlend
     }
   }, [idx, stage, cur])
 
-  // Count a completed round + its matches (local metrics only).
+  // Count a completed round + its matches (local metrics) and remember them.
   useEffect(() => {
     if (stage !== 'results') return
     track('match_round')
-    track('match_match', matches().length)
+    const ms = matches()
+    track('match_match', ms.length)
+    onRecordMatches(ms, `${names.current.length} players`)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage])
 
@@ -124,7 +128,7 @@ export default function MatchMode({ deck, myTaste, onClose, onOpenTitle, onBlend
         )}
 
         {mode === 'remote' && (
-          <RemoteMatch deck={deck} myTaste={myTaste} onOpenTitle={onOpenTitle} onExit={() => setMode('choose')} />
+          <RemoteMatch deck={deck} myTaste={myTaste} onOpenTitle={onOpenTitle} onExit={() => setMode('choose')} onRecordMatches={onRecordMatches} />
         )}
 
         {mode === 'local' && stage === 'setup' && (

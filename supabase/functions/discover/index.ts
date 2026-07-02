@@ -57,12 +57,18 @@ async function tmdb(path: string, params: Record<string, string | undefined>) {
   return r.json();
 }
 
-async function providersFor(type: "movie" | "tv", id: number, region: string): Promise<string[]> {
+// Names for the chips + the JustWatch title page (TMDB's `link`) so "watch it"
+// deep-links to THIS title instead of a text search.
+async function providersFor(type: "movie" | "tv", id: number, region: string): Promise<{ names: string[]; link?: string }> {
   try {
     const d = await tmdb(`/${type}/${id}/watch/providers`, {});
-    const flat = d?.results?.[region]?.flatrate ?? [];
-    return flat.slice(0, 3).map((p: { provider_name: string }) => p.provider_name);
-  } catch { return []; }
+    const r = d?.results?.[region];
+    const flat = r?.flatrate ?? [];
+    return {
+      names: flat.slice(0, 3).map((p: { provider_name: string }) => p.provider_name),
+      link: typeof r?.link === "string" ? r.link : undefined,
+    };
+  } catch { return { names: [] }; }
 }
 
 function isRecent(date?: string) {
@@ -144,7 +150,7 @@ Deno.serve(async (req: Request) => {
       const type = body.mediaType as "movie" | "tv";
       const region0 = String(body.region || "US");
       const r = await tmdb(`/${type}/${body.titleId}`, { append_to_response: "credits,keywords" });
-      const providers = await providersFor(type, r.id, region0);
+      const prov = await providersFor(type, r.id, region0);
       const dateStr = type === "movie" ? r.release_date : r.first_air_date;
       return json([{
         id: r.id, mediaType: type,
@@ -152,11 +158,12 @@ Deno.serve(async (req: Request) => {
         year: dateStr ? Number(String(dateStr).slice(0, 4)) : 0,
         genres: (r.genres || []).map((g: { name: string }) => g.name).filter(Boolean).slice(0, 3),
         overview: r.overview || "",
-        providers,
+        providers: prov.names,
+        watchLink: prov.link,
         rating: typeof r.vote_average === "number" ? r.vote_average : 0,
         poster: r.poster_path ? IMG + r.poster_path : undefined,
         gradient: gradientFor(r.id),
-        inTheaters: type === "movie" && providers.length === 0 && isRecent(dateStr),
+        inTheaters: type === "movie" && prov.names.length === 0 && isRecent(dateStr),
         tags: buildTags(type, r),
       }]);
     }
@@ -197,7 +204,7 @@ Deno.serve(async (req: Request) => {
       const gmap = isMovie ? MOVIE_GENRES : TV_GENRES;
       const results = (data.results || []).slice(0, 12);
       const items = await Promise.all(results.map(async (r: Record<string, any>) => {
-        const providers = await providersFor(type, r.id, region);
+        const prov = await providersFor(type, r.id, region);
         const dateStr = isMovie ? r.release_date : r.first_air_date;
         return {
           id: r.id, mediaType: type,
@@ -205,11 +212,12 @@ Deno.serve(async (req: Request) => {
           year: dateStr ? Number(String(dateStr).slice(0, 4)) : 0,
           genres: (r.genre_ids || []).map((g: number) => gmap[g]).filter(Boolean).slice(0, 3),
           overview: r.overview || "",
-          providers,
+          providers: prov.names,
+          watchLink: prov.link,
           rating: typeof r.vote_average === "number" ? r.vote_average : 0,
           poster: r.poster_path ? IMG + r.poster_path : undefined,
           gradient: gradientFor(r.id),
-          inTheaters: isMovie && providers.length === 0 && isRecent(dateStr),
+          inTheaters: isMovie && prov.names.length === 0 && isRecent(dateStr),
         };
       }));
       out.push(...items.filter((i) => i.title));

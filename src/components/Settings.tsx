@@ -50,6 +50,18 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     finally { setBusy(false) }
   }
 
+  // Data transparency: wipe what REX has LEARNED (vectors) without touching the
+  // library. The Mirror is the "what REX knows" view; this is the way out.
+  const resetLearned = () => {
+    if (!window.confirm('Reset everything REX has learned about your taste? Your watchlist, watched list and ratings stay.')) return
+    try {
+      const s = JSON.parse(localStorage.getItem('rex_state_v2') || '{}')
+      s.taste = {}; s.affinity = {}; s.likes = []; s.dislikes = []
+      localStorage.setItem('rex_state_v2', JSON.stringify(s))
+      location.reload()
+    } catch { setMsg({ kind: 'err', text: 'Could not reset — storage unavailable.' }) }
+  }
+
   const doCloudRestore = async () => {
     if (restoreCode.trim().length !== 6) { setMsg({ kind: 'err', text: 'Enter your 6-character code.' }); return }
     setBusy(true); setMsg(null)
@@ -86,6 +98,12 @@ export default function Settings({ onClose }: { onClose: () => void }) {
               style={{ ...btn(), marginBottom: 18, fontSize: 12.5, padding: '9px' }}>Clear activity stats</button>
           </>
         )}
+
+        {/* Your algorithm — the exit hatch */}
+        <div style={{ fontSize: 11.5, fontWeight: 700, opacity: 0.55, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Your algorithm</div>
+        <button onClick={resetLearned} style={{ ...btn(), marginBottom: 18 }}>
+          <Icon name="sliders" size={16} /> Reset learned taste
+        </button>
 
         {/* On-device file backup */}
         <div style={{ fontSize: 11.5, fontWeight: 700, opacity: 0.55, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Backup file</div>

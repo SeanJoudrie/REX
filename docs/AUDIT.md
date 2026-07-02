@@ -226,9 +226,9 @@ feature, because that's how users experience it.
 | P2 | Duplicate genres multiplied learning deltas and diversity penalties | harness case 9 | ✅ dedup in 3 layers |
 | P2 | Undo `aria-label` ("Undo like") contradicted visible text ("Undo save") | screen reader / locator | ✅ label matches text |
 | P2 | Re-rating a title double-counted samples | rate 4★ then 5★ | ✅ `dn=0` on re-rate |
-| P2 | `seen[]` grows unboundedly (years of swipes → localStorage bloat) | — | open; cap at ~5k with FIFO eviction |
+| P2 | `seen[]` grows unboundedly (years of swipes → localStorage bloat) | — | ✅ capped at 5k, FIFO eviction in `saveState` |
 | P2 | Rate limit is per-isolate in-memory (documented) | — | open (ROADMAP) |
-| P2 | `decodeTaste` accepts arbitrarily large payloads | paste a 10 MB code | open; cap input length |
+| P2 | `decodeTaste` accepted arbitrarily large / hostile payloads | paste a 100 KB code | ✅ 16 KB input cap + per-key sanitization (w clamped ±1, ≤64 keys) — verified via UI |
 
 _Also stress-tested and **passing**: onboarding both steps, deck render, swipe
 via keyboard, Mirror gate ↔ full portrait, invalid taste code error, compat
@@ -245,14 +245,23 @@ filter fix · room TTL · genre dedup · undo/nudge stacking.
 _Deploy note: `supabase functions deploy discover match` to pick up the two
 server fixes._
 
-**Next (P1, in order):**
-1. Outcome feedback loop ("did you watch it?") — direct match-quality signal.
-2. Blend compare view ("you two" screen) — completes the Mirror moment.
-3. Mirror long-press tune — the "your say in the algorithm" promise.
-4. Real watch deep links — closes the core loop's last mile.
-5. Match history shelf — memory + re-engagement.
+**Shipped in the second pass (the P1 list + small P2s):**
+1. ✅ Outcome feedback loop — once per session, a stale (≥2 days) watchlist
+   title gets a "Did you get to it?" nudge; *Watched it* runs the rating sheet
+   (the engine's strongest signal), *Not yet* snoozes 7 days (`outcomeAsked`).
+2. ✅ Blend compare view — the blend banner opens a "You + Alex" sheet: the %,
+   shared loves, friction, and side-by-side top-genre columns (`BlendCompare.tsx`).
+3. ✅ Mirror long-press tune — hold any rail chip → More / Less / Mute writing
+   the vectors directly (genre mute also hard-filters via dislikes).
+4. ✅ Real watch deep links — the proxy now forwards TMDB's JustWatch title
+   `link`; provider chips deep-link to THIS title, with a "Find where to
+   watch" fallback chip when no provider is listed (needs function deploy).
+5. ✅ Match history shelf — matches from remote and pass-the-phone rounds
+   persist (cap 50) and render as Mirror's "Matched together" shelf.
+6. ✅ Soft `without` (learned dislikes hard-filter only at w ≤ −0.6) ·
+   ✅ confidence decay (n halves in ~87 idle days) · ✅ `seen[]` cap ·
+   ✅ taste-code sanitization · ✅ "Reset learned taste" in Settings.
 
-**Later (P2):** soft `without` (down-rank not exclude) · confidence decay ·
-read-only Mirror link · `/search/multi` · accounts + sync + push · distributed
-rate limiting · `seen[]` cap · taste-code input cap · endless remote-match
-paging.
+**Later (P2):** read-only Mirror link · `/search/multi` typeahead · accounts +
+sync + push · distributed rate limiting · endless remote-match paging ·
+library-tab filter parity.

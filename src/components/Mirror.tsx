@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { Title, WatchedItem } from '../types'
 import type { TasteVec, EntityAff } from '../lib/taste'
+import type { MatchRecord } from '../lib/storage'
 import { encodeTaste } from '../lib/tasteShare'
 import Poster from './Poster'
 import Icon from './Icon'
@@ -14,7 +15,7 @@ type PivotTag = { type: string; id: number; name: string }
 
 const titleKey = (t: Title) => `${t.mediaType}-${t.id}`
 
-export default function Mirror({ taste, affinity, watched, watchlist, seenCount, likes, dislikes, onPivot, onStartMatch, onGoSwipe }: {
+export default function Mirror({ taste, affinity, watched, watchlist, seenCount, likes, dislikes, matchHistory, onPivot, onStartMatch, onGoSwipe, onTune, onOpenTitle }: {
   taste: TasteVec
   affinity: EntityAff
   watched: WatchedItem[]
@@ -22,11 +23,16 @@ export default function Mirror({ taste, affinity, watched, watchlist, seenCount,
   seenCount: number
   likes: string[]
   dislikes: string[]
+  matchHistory: MatchRecord[]
   onPivot: (tag: PivotTag) => void
   onStartMatch: () => void
   onGoSwipe: () => void
+  onTune: (tag: PivotTag, action: 'more' | 'less' | 'mute') => void
+  onOpenTitle: (t: Title) => void
 }) {
   const [copied, setCopied] = useState(false)
+  // Long-pressed chip → tune sheet (more / less / mute).
+  const [tune, setTune] = useState<PivotTag | null>(null)
   const library = useMemo(() => [...watched, ...watchlist], [watched, watchlist])
 
   const entitiesByType = useMemo(() => {
@@ -140,10 +146,17 @@ export default function Mirror({ taste, affinity, watched, watchlist, seenCount,
         <Icon name="users" size={18} /> Match with someone — what do you both watch?
       </button>
 
-      <Rail title="People" items={people.slice(0, 12)} onPivot={e => onPivot({ type: 'person', id: e.id, name: e.label })} maxW={people[0]?.w ?? 1} />
-      <Rail title="Studios" items={studios.slice(0, 12)} onPivot={e => onPivot({ type: 'company', id: e.id, name: e.label })} maxW={studios[0]?.w ?? 1} />
-      <Rail title="Themes" items={themes.slice(0, 12)} onPivot={e => onPivot({ type: 'keyword', id: e.id, name: e.label })} maxW={themes[0]?.w ?? 1} />
-      <VibeRail vibes={vibes.slice(0, 10)} onPivot={v => onPivot({ type: 'genre', id: 0, name: v.name })} maxW={vibes[0]?.w ?? 1} />
+      <Rail title="People" items={people.slice(0, 12)} onPivot={e => onPivot({ type: 'person', id: e.id, name: e.label })}
+        onTune={e => setTune({ type: 'person', id: e.id, name: e.label })} maxW={people[0]?.w ?? 1} />
+      <Rail title="Studios" items={studios.slice(0, 12)} onPivot={e => onPivot({ type: 'company', id: e.id, name: e.label })}
+        onTune={e => setTune({ type: 'company', id: e.id, name: e.label })} maxW={studios[0]?.w ?? 1} />
+      <Rail title="Themes" items={themes.slice(0, 12)} onPivot={e => onPivot({ type: 'keyword', id: e.id, name: e.label })}
+        onTune={e => setTune({ type: 'keyword', id: e.id, name: e.label })} maxW={themes[0]?.w ?? 1} />
+      <VibeRail vibes={vibes.slice(0, 10)} onPivot={v => onPivot({ type: 'genre', id: 0, name: v.name })}
+        onTune={v => setTune({ type: 'genre', id: 0, name: v.name })} maxW={vibes[0]?.w ?? 1} />
+      {(people.length > 0 || vibes.length > 0) && (
+        <div style={{ marginTop: 10, fontSize: 11, opacity: 0.45 }}>Tap a chip for its deck · hold it to tune (more / less / mute)</div>
+      )}
 
       {bedrock.length > 0 && (
         <>
@@ -160,7 +173,56 @@ export default function Mirror({ taste, affinity, watched, watchlist, seenCount,
           </div>
         </>
       )}
+
+      {/* Social memory — titles you matched on with other people */}
+      {matchHistory.length > 0 && (
+        <>
+          <div style={{ marginTop: 24, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.6 }}>Matched together</div>
+          <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(86px, 1fr))', gap: 10 }}>
+            {matchHistory.slice(0, 8).map(r => (
+              <button key={`${r.key}-${r.with}`} onClick={() => onOpenTitle(r.title)} aria-label={`Open ${r.title.title}, matched with ${r.with}`}
+                style={{ position: 'relative', aspectRatio: '2/3', borderRadius: 10, overflow: 'hidden', border: 'none', padding: 0, cursor: 'pointer', background: `linear-gradient(155deg, ${r.title.gradient[0]}, ${r.title.gradient[1]})` }}>
+                <Poster src={r.title.poster} />
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px 6px 5px', background: 'linear-gradient(to top, rgba(0,0,0,0.88), transparent)', fontSize: 9.5, fontWeight: 700, lineHeight: 1.15, color: '#86efac', textAlign: 'left' }}>
+                  with {r.with}
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Tune sheet — long-pressed chip */}
+      {tune && (
+        <div onClick={() => setTune(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={`Tune ${tune.name}`}
+            style={{ width: '100%', maxWidth: 480, borderRadius: '24px 24px 0 0', background: '#15151F', border: '1px solid rgba(255,255,255,0.1)', padding: '18px 20px calc(22px + env(safe-area-inset-bottom))' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.55 }}>Tune your algorithm</div>
+            <div style={{ marginTop: 4, fontSize: 19, fontWeight: 800 }}>{tune.name}</div>
+            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <TuneBtn color="#22c55e" label="More like this" sub="Boost it in your deck" onClick={() => { onTune(tune, 'more'); setTune(null) }} />
+              <TuneBtn color="#f6c244" label="Less of this" sub="Ease off without hiding it" onClick={() => { onTune(tune, 'less'); setTune(null) }} />
+              <TuneBtn color="#ef4444" label="Mute" sub={tune.type === 'genre' ? 'Hide this genre from your deck' : 'Stop recommending around this'} onClick={() => { onTune(tune, 'mute'); setTune(null) }} />
+            </div>
+            <button onClick={() => setTune(null)}
+              style={{ marginTop: 12, width: '100%', padding: '11px', borderRadius: 12, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.6)', border: 'none' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+function TuneBtn({ color, label, sub, onClick }: { color: string; label: string; sub: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick}
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, textAlign: 'left', padding: '12px 14px', borderRadius: 13, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', border: `1px solid ${color}55`, color: '#fff' }}>
+      <span style={{ fontSize: 14.5, fontWeight: 800, color }}>{label}</span>
+      <span style={{ fontSize: 12, opacity: 0.65 }}>{sub}</span>
+    </button>
   )
 }
 
@@ -185,34 +247,51 @@ function HeroChip({ label, value, collage, onClick }: { label: string; value?: s
   )
 }
 
-function Rail({ title, items, onPivot, maxW }: { title: string; items: Entity[]; onPivot: (e: Entity) => void; maxW: number }) {
+function Rail({ title, items, onPivot, onTune, maxW }: { title: string; items: Entity[]; onPivot: (e: Entity) => void; onTune: (e: Entity) => void; maxW: number }) {
   if (!items.length) return null
   return (
     <>
       <div style={{ marginTop: 22, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.6 }}>{title}</div>
       <div style={{ marginTop: 10, display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch' } as CSSProperties}>
-        {items.map(e => <Chip key={e.id} label={e.label} pct={maxW ? e.w / maxW : 0} color="56,189,248" onClick={() => onPivot(e)} />)}
+        {items.map(e => <Chip key={e.id} label={e.label} pct={maxW ? e.w / maxW : 0} color="56,189,248" onClick={() => onPivot(e)} onLongPress={() => onTune(e)} />)}
       </div>
     </>
   )
 }
 
-function VibeRail({ vibes, onPivot, maxW }: { vibes: Vibe[]; onPivot: (v: Vibe) => void; maxW: number }) {
+function VibeRail({ vibes, onPivot, onTune, maxW }: { vibes: Vibe[]; onPivot: (v: Vibe) => void; onTune: (v: Vibe) => void; maxW: number }) {
   if (!vibes.length) return null
   return (
     <>
       <div style={{ marginTop: 22, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.6 }}>Genres</div>
       <div style={{ marginTop: 10, display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch' } as CSSProperties}>
-        {vibes.map(v => <Chip key={v.name} label={v.name} pct={maxW ? v.w / maxW : 0} color="34,197,94" onClick={() => onPivot(v)} />)}
+        {vibes.map(v => <Chip key={v.name} label={v.name} pct={maxW ? v.w / maxW : 0} color="34,197,94" onClick={() => onPivot(v)} onLongPress={() => onTune(v)} />)}
       </div>
     </>
   )
 }
 
-function Chip({ label, pct, color, onClick }: { label: string; pct: number; color: string; onClick: () => void }) {
+/** Tap → pivot deck; hold ~450ms → tune sheet. The browser cancels the pointer
+ *  when a rail scroll takes over, so scrolling never triggers the hold. */
+function Chip({ label, pct, color, onClick, onLongPress }: { label: string; pct: number; color: string; onClick: () => void; onLongPress?: () => void }) {
+  const timer = useRef<number | null>(null)
+  const fired = useRef(false)
+  const start = () => {
+    if (!onLongPress) return
+    fired.current = false
+    timer.current = window.setTimeout(() => {
+      fired.current = true
+      if (navigator.vibrate) navigator.vibrate(8)
+      onLongPress()
+    }, 450)
+  }
+  const clear = () => { if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null } }
   return (
-    <button onClick={onClick}
-      style={{ flexShrink: 0, position: 'relative', overflow: 'hidden', fontSize: 12.5, fontWeight: 700, padding: '8px 13px', borderRadius: 999, cursor: 'pointer', color: '#fff', background: 'rgba(255,255,255,0.07)', border: `1px solid rgba(${color},0.5)` }}>
+    <button
+      onPointerDown={start} onPointerUp={clear} onPointerLeave={clear} onPointerCancel={clear}
+      onContextMenu={e => e.preventDefault()}
+      onClick={() => { if (fired.current) { fired.current = false; return } onClick() }}
+      style={{ flexShrink: 0, position: 'relative', overflow: 'hidden', fontSize: 12.5, fontWeight: 700, padding: '8px 13px', borderRadius: 999, cursor: 'pointer', color: '#fff', background: 'rgba(255,255,255,0.07)', border: `1px solid rgba(${color},0.5)`, WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' } as CSSProperties}>
       <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${Math.max(6, Math.min(100, pct * 100))}%`, background: `rgba(${color},0.18)` }} />
       <span style={{ position: 'relative' }}>{label}</span>
     </button>

@@ -4,6 +4,7 @@ import type { MediaType, Tag, Title, WatchedItem } from './types'
 import { fetchDeck, fetchTitleById, USING_SAMPLE } from './tmdb'
 import type { DeckQuery } from './tmdb'
 import { loadState, saveState } from './lib/storage'
+import type { MatchRecord } from './lib/storage'
 import SwipeDeck from './components/SwipeDeck'
 import Watchlist from './components/Watchlist'
 import Watched from './components/Watched'
@@ -11,6 +12,7 @@ import Mirror from './components/Mirror'
 import MatchMode from './components/MatchMode'
 import Detail from './components/Detail'
 import RatingSheet from './components/RatingSheet'
+import BlendCompare from './components/BlendCompare'
 import Onboarding from './components/Onboarding'
 import Settings from './components/Settings'
 import Icon from './components/Icon'
@@ -57,6 +59,8 @@ export default function App() {
   const [likes, setLikes] = useState<string[]>(initial.likes)
   const [dislikes, setDislikes] = useState<string[]>(initial.dislikes)
   const [affinity, setAffinity] = useState<EntityAff>(initial.affinity)
+  const [outcomeAsked, setOutcomeAsked] = useState<Record<string, number>>(initial.outcomeAsked)
+  const [matchHistory, setMatchHistory] = useState<MatchRecord[]>(initial.matchHistory)
   // Auto-pagination: the pool grows page-by-page as the deck drains, so the
   // candidate set is hundreds deep, not one page. pageRef tracks the last page
   // appended; loadingMore guards against concurrent appends; atEnd latches when
@@ -89,6 +93,7 @@ export default function App() {
   const undoTimer = useRef<number | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [matchOpen, setMatchOpen] = useState(false)
+  const [compareOpen, setCompareOpen] = useState(false) // "you two" sheet behind the blend banner
   // Title queued to open after Match closes — lets us pop Match's own history
   // entry (via Back) instead of orphaning it, then open the detail cleanly.
   const pendingMatchOpen = useRef<Title | null>(null)
@@ -101,6 +106,10 @@ export default function App() {
   const sessionSaves = useRef(0)
   const [doneNudge, setDoneNudge] = useState<Title | null>(null)
   const doneTimer = useRef<number | null>(null)
+  // Outcome feedback: "did you watch it?" for a stale watchlist pick — the
+  // only signal that measures whether REX's PICKS landed, not just its cards.
+  const [outcomeNudge, setOutcomeNudge] = useState<Title | null>(null)
+  const outcomeScheduled = useRef(false)
   // Logo-tap easter egg → Rexasaurus Rex roars.
   const logoTaps = useRef(0)
   const logoTimer = useRef<number | null>(null)
@@ -128,7 +137,10 @@ export default function App() {
     const blendLikes = blend ? [...blend.likes.filter(g => g !== 'New Releases'), ...topGenres(blend.taste)] : []
     const blendDislikes = blend ? [...blend.dislikes, ...bottomGenres(blend.taste)] : []
     const withGenres = Array.from(new Set([...tasteGenres, ...topGenres(v), ...blendLikes]))
-    const withoutGenres = Array.from(new Set([...dislikes, ...bottomGenres(v), ...blendDislikes]))
+    // Learned dislikes stay a soft down-rank until they're STRONG (≤ −0.6);
+    // only explicit dislikes[] hard-filter the fetch — otherwise a few passes
+    // walls off a genre and the filter bubble calcifies.
+    const withoutGenres = Array.from(new Set([...dislikes, ...bottomGenres(v, -0.6), ...blendDislikes]))
     const effSort = sort === 'popular' && likes.includes('New Releases') ? 'new' : sort
     return {
       mediaTypes,
@@ -207,8 +219,45 @@ export default function App() {
   const hydrated = useRef(false)
   useEffect(() => {
     if (!hydrated.current) { hydrated.current = true; return }
-    saveState({ watchlist, watched, seen, likes, dislikes, taste, affinity, tasteDecayedAt: initial.tasteDecayedAt, onboarded })
-  }, [watchlist, watched, seen, likes, dislikes, taste, affinity, onboarded, initial.tasteDecayedAt])
+    saveState({ watchlist, watched, seen, likes, dislikes, taste, affinity, tasteDecayedAt: initial.tasteDecayedAt, onboarded, outcomeAsked, matchHistory })
+  }, [watchlist, watched, seen, likes, dislikes, taste, affinity, onboarded, outcomeAsked, matchHistory, initial.tasteDecayedAt])
+
+  // Once per session, ~1.6s after the deck is up: ask about ONE watchlist title
+  // that's been sitting ≥2 days (legacy items without addedAt count) and hasn't
+  // been asked about in the last week. Answering feeds the star signal — the
+  // strongest input the engine has.
+  useEffect(() => {
+    if (status !== 'ready' || !onboarded || outcomeScheduled.current) return
+    const now = Date.now()
+    const cand = watchlist.find(t =>
+      (!t.addedAt || now - t.addedAt > 2 * 86_400_000) &&
+      now - (outcomeAsked[keyOf(t)] ?? 0) > 7 * 86_400_000)
+    if (!cand) return
+    // Debounced, once per session: dep changes (a swipe mid-delay) just reset
+    // the timer; the flag flips only when the nudge actually shows.
+    const h = window.setTimeout(() => {
+      outcomeScheduled.current = true
+      setOutcomeNudge(cand)
+      setOutcomeAsked(a => ({ ...a, [keyOf(cand)]: Date.now() }))
+    }, 1600)
+    return () => window.clearTimeout(h)
+  }, [status, onboarded, watchlist, outcomeAsked])
+
+  // Matches with other people are worth remembering — Mirror's social shelf.
+  const recordMatches = (titles: Title[], withName: string) => {
+    if (!titles.length) return
+    const at = Date.now()
+    setMatchHistory(h => {
+      const next = [...h]
+      for (const t of titles) {
+        const key = keyOf(t)
+        const i = next.findIndex(r => r.key === key && r.with === withName)
+        if (i >= 0) next[i] = { ...next[i], at }
+        else next.unshift({ key, title: t, with: withName, at })
+      }
+      return next.sort((a, b) => b.at - a.at).slice(0, 50)
+    })
+  }
 
   // Keep poolRef current so loadMore can dedup synchronously.
   useEffect(() => { poolRef.current = pool }, [pool])
@@ -261,7 +310,7 @@ export default function App() {
 
   const like = (t: Title) => {
     const k = keyOf(t); markSeen(k)
-    setWatchlist(w => (w.some(x => keyOf(x) === k) ? w : [...w, t]))
+    setWatchlist(w => (w.some(x => keyOf(x) === k) ? w : [...w, { ...t, addedAt: Date.now() }]))
     const tags = enrichedTags.current.get(k)
     const gd = LIKE_DELTA * (tags ? 1.25 : 1) // informed > impulse
     setTaste(v => applySignal(v, t.genres, gd))
@@ -332,7 +381,7 @@ export default function App() {
     setWatchlist(w => {
       const had = w.some(x => keyOf(x) === k)
       if (!had) track('save')
-      return had ? w.filter(x => keyOf(x) !== k) : [...w, t]
+      return had ? w.filter(x => keyOf(x) !== k) : [...w, { ...t, addedAt: Date.now() }]
     })
     markSeen(k)
   }
@@ -345,7 +394,7 @@ export default function App() {
     fetchTitleById(t.mediaType, t.id).then(full => {
       if (!full) return
       if (full.tags) enrichedTags.current.set(keyOf(t), full.tags) // informed signal + why-this
-      setDetail(d => (d && keyOf(d) === keyOf(t) ? { ...d, tags: full.tags ?? d.tags, poster: d.poster ?? full.poster, overview: d.overview || full.overview } : d))
+      setDetail(d => (d && keyOf(d) === keyOf(t) ? { ...d, tags: full.tags ?? d.tags, poster: d.poster ?? full.poster, overview: d.overview || full.overview, watchLink: d.watchLink ?? full.watchLink } : d))
     }).catch(() => {})
   }
 
@@ -380,6 +429,28 @@ export default function App() {
       if (a && a.w > 0.18) parts.push(tag.name)
     }
     return parts.length ? `Because you like ${parts.slice(0, 2).join(' + ')}` : null
+  }
+
+  // Mirror tune (long-press a chip): nudge or mute a learned signal directly —
+  // the "you have a say in the algorithm" promise, on the portrait itself.
+  const tuneTag = (tag: { type: string; id: number; name: string }, action: 'more' | 'less' | 'mute') => {
+    if (tag.type === 'genre') {
+      if (action === 'mute') {
+        setDislikes(d => (d.includes(tag.name) ? d : [...d, tag.name]))
+        setLikes(l => l.filter(x => x !== tag.name))
+        setTaste(v => applySignal(v, [tag.name], -0.5, 0))
+      } else {
+        setTaste(v => applySignal(v, [tag.name], action === 'more' ? 0.25 : -0.25, 0))
+      }
+    } else {
+      const k = `${tag.type}:${tag.id}`
+      if (action === 'mute') {
+        setAffinity(a => ({ ...a, [k]: { ...(a[k] ?? { n: 1, type: tag.type, label: tag.name }), w: -1 } }))
+      } else {
+        setAffinity(a => applyEntities(a, [{ type: tag.type as Tag['type'], id: tag.id, name: tag.name }], action === 'more' ? 0.2 : -0.2, 0))
+      }
+    }
+    if (navigator.vibrate) navigator.vibrate(10)
   }
 
   // Taste prefs — a tag is either liked, disliked, or neither.
@@ -465,10 +536,12 @@ export default function App() {
       {/* Blend-mode banner — "what do WE watch" deck */}
       {screen === 'deck' && blend && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '0 16px 6px', padding: '8px 12px', borderRadius: 12, background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.35)' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <button onClick={() => setCompareOpen(true)} aria-label="See how your tastes compare"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, minWidth: 0 }}>
             <Icon name="users" size={15} /> Blending with <span style={{ color: '#7dd3fc' }}>{blend.name || 'a friend'}</span>
             {blendCompat?.score != null && <span style={{ opacity: 0.75 }}>· {blendCompat.score}% match</span>}
-          </span>
+            <Icon name="info" size={13} />
+          </button>
           <button onClick={() => setBlend(null)} aria-label="Clear blend"
             style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.18)' }}>
             Clear <Icon name="x" size={13} />
@@ -520,8 +593,9 @@ export default function App() {
             likes={likes} dislikes={dislikes} onTaste={toggleTaste} onResetTaste={resetTaste} />
         ) : (
           <Mirror taste={taste} affinity={affinity} watched={watched} watchlist={watchlist} seenCount={seen.length}
-            likes={likes} dislikes={dislikes}
-            onPivot={deckFromTag} onStartMatch={() => setMatchOpen(true)} onGoSwipe={() => setScreen('deck')} />
+            likes={likes} dislikes={dislikes} matchHistory={matchHistory}
+            onPivot={deckFromTag} onStartMatch={() => setMatchOpen(true)} onGoSwipe={() => setScreen('deck')}
+            onTune={tuneTag} onOpenTitle={openDetail} />
         )}
       </main>
 
@@ -537,7 +611,7 @@ export default function App() {
           of a session must stay undoable. */}
       {screen === 'deck' && undo && (
         <button onClick={doUndo} aria-label={`Undo ${undo.action === 'like' ? 'save' : undo.action === 'watched' ? 'watched' : 'pass'}`}
-          style={{ position: 'fixed', bottom: doneNudge ? 168 : 84, left: '50%', transform: 'translateX(-50%)', zIndex: 40, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 999, cursor: 'pointer',
+          style={{ position: 'fixed', bottom: doneNudge || outcomeNudge ? 168 : 84, left: '50%', transform: 'translateX(-50%)', zIndex: 40, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 999, cursor: 'pointer',
             background: 'rgba(22,22,32,0.96)', color: '#fff', border: '1px solid rgba(255,255,255,0.22)', fontSize: 13.5, fontWeight: 700, boxShadow: '0 8px 24px -8px rgba(0,0,0,0.7)' }}>
           <Icon name="undo" size={16} /> Undo {undo.action === 'like' ? 'save' : undo.action === 'watched' ? 'watched' : 'pass'}
         </button>
@@ -561,6 +635,31 @@ export default function App() {
           <button onClick={() => setDoneNudge(null)} aria-label="Keep swiping"
             style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 999, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.6)' }}>
             <Icon name="x" size={15} />
+          </button>
+        </div>
+      )}
+
+      {/* Outcome feedback — "did you watch it?" closes the loop from pick to
+          verdict. Yields the star signal, the engine's strongest input. */}
+      {screen === 'deck' && outcomeNudge && !doneNudge && (
+        <div className="rex-fade" role="status"
+          style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 41, width: 'min(420px, calc(100% - 32px))',
+            display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 16,
+            background: 'rgba(22,22,32,0.98)', border: '1px solid rgba(56,189,248,0.4)', boxShadow: '0 12px 32px -10px rgba(0,0,0,0.8)' }}>
+          <div style={{ width: 34, height: 48, flexShrink: 0, position: 'relative', borderRadius: 6, overflow: 'hidden', background: `linear-gradient(155deg, ${outcomeNudge.gradient[0]}, ${outcomeNudge.gradient[1]})` }}>
+            {outcomeNudge.poster && <img src={outcomeNudge.poster} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 800 }}>Did you get to it?</div>
+            <div style={{ fontSize: 12, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{outcomeNudge.title} has been on your list a while.</div>
+          </div>
+          <button onClick={() => { const t = outcomeNudge; setOutcomeNudge(null); if (t) markWatched(t) }}
+            style={{ flexShrink: 0, fontSize: 12.5, fontWeight: 800, padding: '8px 12px', borderRadius: 10, cursor: 'pointer', background: '#38bdf8', color: '#06202b', border: 'none' }}>
+            Watched it
+          </button>
+          <button onClick={() => setOutcomeNudge(null)} aria-label="Not yet"
+            style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, padding: '8px 10px', borderRadius: 10, cursor: 'pointer', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.6)' }}>
+            Not yet
           </button>
         </div>
       )}
@@ -594,7 +693,8 @@ export default function App() {
         setOnboarded(true)
       }} />}
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
-      {matchOpen && <MatchMode deck={deck} myTaste={taste}
+      {compareOpen && blend && <BlendCompare myTaste={taste} friend={blend} onClose={() => setCompareOpen(false)} />}
+      {matchOpen && <MatchMode deck={deck} myTaste={taste} onRecordMatches={recordMatches}
         onClose={() => {
           setMatchOpen(false)
           const t = pendingMatchOpen.current; pendingMatchOpen.current = null
